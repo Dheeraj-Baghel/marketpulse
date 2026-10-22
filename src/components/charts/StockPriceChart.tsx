@@ -259,12 +259,12 @@ const ChartHeader = memo(function ChartHeader({
           )}
         </div>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 sm:flex-col sm:items-end">
-        <span data-testid="eod-badge" className="rounded border border-amber-300/30 bg-amber-300/[0.08] px-1.5 py-px font-mono text-[10px] font-semibold tracking-[0.12em] text-amber-200">
+      <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 sm:shrink-0 sm:flex-col sm:items-end">
+        <span data-testid="eod-badge" className="shrink-0 rounded border border-amber-300/30 bg-amber-300/[0.08] px-1.5 py-px font-mono text-[10px] font-semibold tracking-[0.12em] text-amber-200">
           HISTORICAL EOD
         </span>
         {view.status === "ready" ? (
-          <span data-testid="source-badge" className="text-[10.5px] text-fg-muted">
+          <span data-testid="source-badge" className="min-w-0 text-[10.5px] text-fg-muted">
             Source: Imported NSE historical data · Unadjusted
           </span>
         ) : null}

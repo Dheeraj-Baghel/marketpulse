@@ -388,6 +388,13 @@ export async function runChartChecks(ctx: Ctx) {
         await p.waitForTimeout(500);
         const fs = (await p.getByTestId("stock-price-chart").boundingBox())!;
         assert(fs.width >= 385 && fs.height >= 800, `mobile full screen ${fs.width}x${fs.height}`);
+        const clipped = await p.evaluate(() =>
+          ["eod-badge", "source-badge", "latest-close", "session-change", "ohlc-readout"]
+            .map((id) => [id, document.querySelector(`[data-testid=${id}]`)?.getBoundingClientRect()] as const)
+            .filter(([, r]) => r && (r.right > window.innerWidth + 0.5 || r.left < -0.5))
+            .map(([id]) => id),
+        );
+        assert(clipped.length === 0, `text clipped at 390px full screen: ${clipped.join(", ")}`);
         await p.screenshot({ caret: "initial", path: path.join(shots, "20-mobile-fullscreen-390.png") });
         await p.getByRole("button", { name: "Exit full screen", exact: true }).tap();
       } else {
