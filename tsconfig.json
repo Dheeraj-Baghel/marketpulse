@@ -41,6 +41,7 @@
   ],
   "exclude": [
     "node_modules",
-    ".next-e2e"
+    ".next-e2e",
+    ".next-build"
   ]
 }

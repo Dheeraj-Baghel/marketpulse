@@ -1,13 +1,15 @@
 /**
- * Real-browser acceptance run for Stage 1.
+ * Real-browser acceptance run for Stages 1, 2A and 2B.
  *
  *   npm run test:e2e
  *
  * Starts `next dev` against a throwaway SQLite file, then in Chromium:
  * empty onboarding -> CLI import of the official CSVs in data/nse/ -> search by
  * name / symbol / ISIN -> pagination -> selection -> details -> mobile ->
- * repeat import (no duplicates). Writes screenshots and results.json to
- * artifacts/testing/. Requires data/nse/EQUITY_L.csv and SME_EQUITY_L.csv.
+ * repeat import (no duplicates) -> real price CSV import (Stage 2A) -> chart
+ * checks (Stage 2B, tests/e2e/chart-checks.mts). Writes screenshots and
+ * results.json to artifacts/. Requires data/nse/EQUITY_L.csv and
+ * SME_EQUITY_L.csv; chart checks also need data/prices/RELIANCE.csv + TCS.csv.
  */
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
@@ -15,6 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { chromium, type Page } from "playwright";
+import { runChartChecks } from "./chart-checks.mjs";
 
 const ROOT = process.cwd();
 const PORT = Number(process.env.E2E_PORT ?? 4329);
@@ -38,6 +41,8 @@ fs.mkdirSync(SHOTS, { recursive: true });
 const results: { name: string; ok: boolean; detail: string }[] = [];
 const consoleErrors: string[] = [];
 let expect404 = false;
+/** Set by chart check 23, which deliberately injects an HTTP 500 for one request. */
+const expected = { http500: false };
 
 async function check(name: string, fn: () => Promise<string>) {
   try {
@@ -118,6 +123,7 @@ try {
   page.on("console", (m) => {
     if (m.type() !== "error") return;
     if (expect404 && /status of 404/.test(m.text())) return; // deliberate unknown-symbol check
+    if (expected.http500 && /status of 500/.test(m.text())) return; // deliberate injected API failure (check 23)
     consoleErrors.push(m.text());
   });
   page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
@@ -210,9 +216,12 @@ try {
     const fourth = (await rows.nth(3).getAttribute("data-symbol")) ?? "";
     const panelAfter = await page.locator("section[aria-labelledby='selected-heading'] header .font-mono").first().innerText();
     assert(panelAfter === fourth, `ArrowDown selected ${panelAfter}, expected ${fourth}`);
-    assert(await page.getByText("Price chart not configured yet").isVisible(), "chart placeholder missing");
+    // Stage 2B: the chart region follows the selection (no price data is imported yet in this run).
+    const chart = page.getByTestId("stock-price-chart");
+    await page.waitForFunction((s) => document.querySelector(`[data-testid=stock-price-chart][data-symbol="${s}"]`)?.getAttribute("data-status") === "empty", fourth);
+    assert(await chart.getByText("Historical price data is not available for this security.").isVisible(), "no-data state missing");
     await page.screenshot({ caret: "initial", path: path.join(SHOTS, "04-selection.png") });
-    return `click -> ${symbol}, ArrowDown -> ${fourth}; chart placeholder present`;
+    return `click -> ${symbol}, ArrowDown -> ${fourth}; chart region follows selection and shows the explicit no-data state`;
   });
 
   await check("8. Company details open correctly", async () => {
@@ -297,30 +306,24 @@ try {
   });
 
   const relianceCsv = realPriceFile("RELIANCE");
-  await check("11. Stage 2A: price status shows availability, never prices", async () => {
-    // Before import: no data for a valid company.
+  await check("11. Stage 2A/2B: availability before and after a real import", async () => {
+    // Before import: explicit no-data state, never another company's chart.
     await searchFor(page, "RELIANCE");
     await page.locator("tbody tr[data-symbol='RELIANCE'] td").first().click();
-    const status = page.getByTestId("price-data-status");
-    assert((await status.innerText()).includes("Historical price data not available"), "expected 'not available' before import");
+    await page.locator("[data-testid=stock-price-chart][data-symbol=RELIANCE][data-status=empty]").waitFor();
     if (!relianceCsv) return "real RELIANCE CSV absent: only the 'not available' state was checked";
     const out = execFileSync("npx", ["tsx", "scripts/import-prices.ts", "--symbol", "RELIANCE", "--series", "EQ", relianceCsv], { cwd: ROOT, env, encoding: "utf8" });
     assert(/inserted=\d+/.test(out), out);
-    await page.reload();
+    await page.reload(); // client cache is per page load; empty results are re-fetched
     await page.locator("tbody tr[data-symbol='RELIANCE'] td").first().click();
-    const text = await status.innerText();
-    assert(/Historical price data available — latest trading date: \d{2} \w{3} \d{4}/.test(text), `status: ${text}`);
-    const panel = await page.locator("section[aria-labelledby='selected-heading']").innerText();
-    assert(!/₹|%|\d,\d{3}\.\d{2}/.test(panel), `panel shows price-like values: ${panel}`);
-    assert(await page.getByText("Price chart not configured yet").isVisible(), "chart placeholder must remain");
-    await page.screenshot({ caret: "initial", path: path.join(SHOTS, "10-price-status-available.png") });
+    await page.locator("[data-testid=stock-price-chart][data-symbol=RELIANCE][data-status=ready] canvas").first().waitFor();
+    const latest = await page.getByTestId("latest-date").getAttribute("datetime");
     await searchFor(page, "INFY");
-    assert((await status.innerText()).includes("Historical price data not available"), "INFY should have no data");
+    await page.locator("[data-testid=stock-price-chart][data-symbol=INFY][data-status=empty]").waitFor();
     await page.goto(`${BASE}/stocks/RELIANCE`);
     const detail = await page.getByTestId("price-data-status").innerText();
-    assert(/latest trading date/.test(detail) && /trading days from/.test(detail), `details: ${detail}`);
-    await page.screenshot({ caret: "initial", path: path.join(SHOTS, "11-details-price-status.png"), fullPage: true });
-    return `before: not available; after real import: "${text.trim()}"; INFY not available; details page shows coverage`;
+    assert(/latest trading date/.test(detail) && /sessions from/.test(detail), `details: ${detail}`);
+    return `before: explicit no-data state; after real import: chart ready, latest session ${latest}; INFY no-data; details coverage listed`;
   });
 
   await check("12. Stage 2A: /api/prices contract and errors", async () => {
@@ -342,6 +345,15 @@ try {
     assert(rel.status === 200 && dates.length > 0 && dates.join() === [...dates].sort().join(), "sorted candles");
     return `INFY empty 200; HAMPTON 409; bad range 400; unknown 404; RELIANCE 1M ${dates.length} ascending candles ${dates[0]}..${dates.at(-1)}`;
   });
+
+  // ---------------------------------------------------------------- Stage 2B
+  const tcsCsv = realPriceFile("TCS");
+  if (relianceCsv && tcsCsv) {
+    execFileSync("npx", ["tsx", "scripts/import-prices.ts", "--symbol", "TCS", "--series", "EQ", tcsCsv], { cwd: ROOT, env, encoding: "utf8" });
+    await runChartChecks({ browser, page, base: BASE, shots: SHOTS, dbPath: DB, check, searchFor, consoleErrors, expected });
+  } else {
+    results.push({ name: "13+. Stage 2B chart checks", ok: false, detail: "real RELIANCE/TCS CSVs not present in data/prices; chart checks need authentic data" });
+  }
 
   await check("No browser console errors during the run", async () => {
     assert(consoleErrors.length === 0, consoleErrors.join(" | "));

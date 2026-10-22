@@ -11,3 +11,4 @@ data/prices/*.csv
 data/backups/
 .DS_Store
 .next-e2e/
+.next-build/

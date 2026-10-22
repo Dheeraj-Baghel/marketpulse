@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-10-22T09:50:40.123Z",
+  "ranAt": "2026-10-22T15:38:44.691Z",
   "base": "http://127.0.0.1:4329",
   "results": [
     {
@@ -35,7 +35,7 @@
     {
       "name": "7. Company selection works (mouse and keyboard)",
       "ok": true,
-      "detail": "click -> 360ONE, ArrowDown -> 3BBLACKBIO; chart placeholder present"
+      "detail": "click -> 360ONE, ArrowDown -> 3BBLACKBIO; chart region follows selection and shows the explicit no-data state"
     },
     {
       "name": "8. Company details open correctly",
@@ -53,14 +53,84 @@
       "detail": "3193 -> 3193 securities; 4 logged import runs; ✓ EQUITY_L.csv [MAINBOARD] rows=2611 inserted=0 updated=0 unchanged=2611 rejected=0 duplicates=0 deactivated=0 / ✓ SME_EQUITY_L.csv [SME] rows=582 inserted=0 updated=0 unchanged=582 rejected=0 duplicates=0 deactivated=0"
     },
     {
-      "name": "11. Stage 2A: price status shows availability, never prices",
+      "name": "11. Stage 2A/2B: availability before and after a real import",
       "ok": true,
-      "detail": "before: not available; after real import: \"Historical price data available — latest trading date: 21 Oct 2026\"; INFY not available; details page shows coverage"
+      "detail": "before: explicit no-data state; after real import: chart ready, latest session 2026-10-21; INFY no-data; details coverage listed"
     },
     {
       "name": "12. Stage 2A: /api/prices contract and errors",
       "ok": true,
       "detail": "INFY empty 200; HAMPTON 409; bad range 400; unknown 404; RELIANCE 1M 20 ascending candles 2026-09-22..2026-10-21"
+    },
+    {
+      "name": "13. RELIANCE shows its imported candles; header uses stored values",
+      "ok": true,
+      "detail": "246 candles == stored 2025-10-23..2026-10-21; close ₹1,209.00; change 0.58% vs 2026-10-19"
+    },
+    {
+      "name": "14. OHLC readout matches stored records on hover and at rest",
+      "ok": true,
+      "detail": "3 crosshair positions matched stored OHLCV exactly; rest readout = latest 2026-10-21"
+    },
+    {
+      "name": "15. Volume pane matches stored volumes, coloured by direction",
+      "ok": true,
+      "detail": "246 volume bars equal stored volumes (pane 2 of 2)"
+    },
+    {
+      "name": "16. Selecting TCS replaces RELIANCE completely; range kept",
+      "ok": true,
+      "detail": "TCS 6M: 125 candles all from stored TCS; 0 RELIANCE candles; range 6M retained"
+    },
+    {
+      "name": "17. Candlestick ↔ line toggle keeps the same data",
+      "ok": true,
+      "detail": "line = 125 closing prices; candles identical after round trip"
+    },
+    {
+      "name": "18. Timeframes 1M/3M/6M/1Y/ALL use only stored dates",
+      "ok": true,
+      "detail": "1M=20, 3M=63, 6M=125, 1Y=246, ALL=246 sessions (stored 2025-10-23..2026-10-21); footer states real coverage"
+    },
+    {
+      "name": "19. Zoom, pan and reset view",
+      "ok": true,
+      "detail": "span 245 -> zoom 184 -> pan Δ-34 -> reset 245 bars"
+    },
+    {
+      "name": "20. Full-screen chart opens and closes",
+      "ok": true,
+      "detail": "full screen 1440x900; exit restores 692px panel"
+    },
+    {
+      "name": "21. Company without history shows the empty state, never the previous chart",
+      "ok": true,
+      "detail": "INFY: explicit empty state; previous chart destroyed (0 live instances); no price shown"
+    },
+    {
+      "name": "22. Rapid switching never shows stale data (delayed responses)",
+      "ok": true,
+      "detail": "RELIANCE delayed 1.5 s: switching to RCOM kept the empty state (0 charts); switching to TCS kept TCS chart/header"
+    },
+    {
+      "name": "23. API failure shows an error with a working retry; metadata stays",
+      "ok": true,
+      "detail": "HTTP 500 -> 'Price database unavailable' + Retry; metadata visible; retry loaded TCS"
+    },
+    {
+      "name": "24. Unmount destroys the chart (no leaked instances)",
+      "ok": true,
+      "detail": "live chart instances: dashboard 1 -> details 1 -> no-data dashboard 0"
+    },
+    {
+      "name": "25. Company page chart (details) with identity header and placeholders",
+      "ok": true,
+      "detail": "details chart 246 candles (1Y); placeholders intact; INFY details shows empty state"
+    },
+    {
+      "name": "26. Responsive: 1440 / 1280 / 820 / 390 without overflow or clipped axis",
+      "ok": true,
+      "detail": "1440px ok (canvas 650x449, side by side); 1280px ok (canvas 554x315, side by side); 820px ok (canvas 728x286, stacked); 390px ok (canvas 322x286, stacked)"
     },
     {
       "name": "No browser console errors during the run",

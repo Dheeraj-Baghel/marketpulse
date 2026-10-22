@@ -1,13 +1,16 @@
-import { AlertTriangle, ArrowLeft, Bot, FileText, LineChart, Newspaper } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, FileText, Newspaper } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
+import { CompanyChart } from "@/components/company/company-chart";
 import { FutureSection } from "@/components/company/future-section";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { validatePriceResponse, type ValidatedSeries } from "@/lib/charts/candles";
 import { getCompanyBySymbol, normaliseSymbolParam } from "@/lib/directory/queries";
 import { LocalNseHistoricalProvider } from "@/lib/market-data/local-nse-provider";
+import { getPrices } from "@/lib/market-data/price-service";
 import {
   formatIsoDate,
   formatRupees,
@@ -40,10 +43,23 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
   if (decodeURIComponent(raw) !== symbol) permanentRedirect(stockHref(symbol));
 
   const primary = company.listings[0];
-  // Stage 2A: dates of imported history per series. No price values are shown.
+  // Chart the series that actually has imported history (else the first one,
+  // which then shows the explicit no-data state). Never mixes series.
   const provider = new LocalNseHistoricalProvider();
   const coverage = company.listings.map((l) => ({ series: l.series, ...provider.coverage(l.id) }));
-  const withData = coverage.filter((c) => c.count > 0);
+  const chartListing = company.listings.find((l) => coverage.some((c) => c.series === l.series && c.count > 0)) ?? primary;
+
+  // Seed the chart from the same service + validator the API uses, so the
+  // first paint needs no extra request. Failure falls back to client fetching.
+  let initialData: ValidatedSeries | null = null;
+  if (chartListing) {
+    try {
+      const body = await getPrices({ symbol: chartListing.symbol, series: chartListing.series, range: "MAX" }, { provider });
+      initialData = validatePriceResponse(body, { symbol: chartListing.symbol, series: chartListing.series });
+    } catch {
+      initialData = null;
+    }
+  }
 
   return (
     <AppShell active={null}>
@@ -59,7 +75,7 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
         </div>
       </div>
 
-      <main id="main" className="mx-auto max-w-[1200px] px-4 pb-12 pt-6 sm:px-6">
+      <main id="main" className="mx-auto max-w-[1200px] px-4 pb-12 pt-5 sm:px-6">
         <header>
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-sm font-semibold text-accent">NSE: {company.symbol}</span>
@@ -67,6 +83,20 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
             {primary && primary.instrumentKind !== "EQUITY_SHARE" ? <Badge variant="warn">{INSTRUMENT_LABEL[primary.instrumentKind]}</Badge> : null}
           </div>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-balance sm:text-3xl">{company.name}</h1>
+          <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-fg-muted">
+            <div className="flex gap-1.5">
+              <dt>ISIN</dt>
+              <dd className="font-mono text-fg">{company.isin}</dd>
+            </div>
+            <div className="flex gap-1.5">
+              <dt>Segment</dt>
+              <dd className="text-fg">{SEGMENT_LABEL[company.segment]}</dd>
+            </div>
+            <div className="flex gap-1.5">
+              <dt>Series</dt>
+              <dd className="font-mono text-fg">{company.listings.map((l) => l.series).join(", ")}</dd>
+            </div>
+          </dl>
           {!company.isActive ? (
             <p role="status" className="mt-3 inline-flex items-center gap-2 rounded-md border border-amber-400/30 bg-amber-400/[0.06] px-3 py-1.5 text-xs text-amber-200">
               <AlertTriangle className="size-3.5" aria-hidden="true" />
@@ -75,7 +105,13 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
           ) : null}
         </header>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        {chartListing ? (
+          <section aria-label="Historical price chart" className="mt-5 overflow-hidden rounded-lg border border-line">
+            <CompanyChart securityId={chartListing.id} symbol={chartListing.symbol} series={chartListing.series} name={company.name} initialData={initialData} />
+          </section>
+        ) : null}
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <Card aria-labelledby="identity-heading">
             <CardHeader>
               <CardTitle id="identity-heading">Security identity</CardTitle>
@@ -107,32 +143,36 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
           </Card>
 
           <div className="flex flex-col gap-4">
-            <Card aria-labelledby="chart-heading" className="flex min-h-56 flex-col">
+            <Card aria-labelledby="price-data-heading">
               <CardHeader>
-                <CardTitle id="chart-heading">Price chart</CardTitle>
+                <CardTitle id="price-data-heading">Imported price data</CardTitle>
               </CardHeader>
-              <div className="m-4 flex flex-1 flex-col items-center justify-center rounded-md border border-dashed border-line px-6 py-8 text-center chart-grid">
-                <LineChart className="size-5 text-fg-muted" aria-hidden="true" />
-                <p className="mt-2 text-sm font-medium">Price chart not configured yet</p>
-                <p className="mt-1 text-xs text-fg-muted">Charts arrive in a later stage.</p>
-                <div data-testid="price-data-status" className="mt-3 text-[11.5px]">
-                  {withData.length === 0 ? (
-                    <p className="text-fg-muted">Historical price data not available</p>
-                  ) : (
-                    withData.map((c) => (
-                      <p key={c.series} className="text-fg">
-                        Historical price data available{coverage.length > 1 ? ` (${c.series})` : ""} — latest trading date:{" "}
-                        <time dateTime={c.latest ?? undefined} className="font-medium">
-                          {formatIsoDate(c.latest)}
-                        </time>
-                        <span className="block text-fg-muted">
-                          {c.count} trading days from {formatIsoDate(c.earliest)} · NSE CSV import, unadjusted
-                        </span>
+              <ul data-testid="price-data-status" className="divide-y divide-line/70 text-[13px]">
+                {coverage.map((c) => (
+                  <li key={c.series} className="px-4 py-2.5">
+                    <p className="flex justify-between gap-3">
+                      <span className="font-mono font-semibold">{c.series}</span>
+                      <span className={c.count > 0 ? "text-fg" : "text-fg-muted"}>
+                        {c.count > 0 ? (
+                          <>
+                            Historical price data available — latest trading date:{" "}
+                            <time dateTime={c.latest ?? undefined} className="font-medium">
+                              {formatIsoDate(c.latest)}
+                            </time>
+                          </>
+                        ) : (
+                          "Historical price data not available"
+                        )}
+                      </span>
+                    </p>
+                    {c.count > 0 ? (
+                      <p className="mt-0.5 text-right text-[11.5px] text-fg-muted">
+                        {c.count} sessions from {formatIsoDate(c.earliest)} · NSE CSV import · unadjusted EOD
                       </p>
-                    ))
-                  )}
-                </div>
-              </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
             </Card>
 
             {company.relatedSecurities.length > 0 ? (

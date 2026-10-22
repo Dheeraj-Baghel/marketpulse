@@ -2,6 +2,7 @@
 
 import { Columns3, SearchX } from "lucide-react";
 import { useRef, useState } from "react";
+import type { ChartMode, ChartRange } from "@/lib/charts/candles";
 import type { DirectoryPage, SegmentFilter as Filter } from "@/lib/directory/queries";
 import { formatInt } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,9 @@ export function DirectoryWorkspace({ page, query, segment, initialSelected }: Pr
   const panelRef = useRef<HTMLDivElement>(null);
   // ISIN is an optional column (always shown in the preview panel and details page).
   const [showIsin, setShowIsin] = useState(false);
+  // Chart preferences survive company switches (and new result pages).
+  const [chartRange, setChartRange] = useState<ChartRange>("1Y");
+  const [chartMode, setChartMode] = useState<ChartMode>("candles");
 
   const fallbackKey = page.rows[0] ? rowKey(page.rows[0]) : null;
   const [selectedKey, setSelectedKey] = useState<string | null>(
@@ -116,8 +120,8 @@ export function DirectoryWorkspace({ page, query, segment, initialSelected }: Pr
         )}
       </section>
 
-      <div ref={panelRef} className="min-w-0 scroll-mt-16 lg:sticky lg:top-[4.5rem] lg:flex lg:h-[calc(100dvh-5.5rem)] lg:flex-col [&>section]:lg:flex-1">
-        <SelectedCompanyPanel row={selectedRow} />
+      <div ref={panelRef} className="min-w-0 scroll-mt-16 lg:sticky lg:top-[4.5rem] lg:flex lg:h-[calc(100dvh-5.5rem)] lg:min-h-[36rem] lg:flex-col [&>section]:lg:flex-1">
+        <SelectedCompanyPanel row={selectedRow} range={chartRange} onRangeChange={setChartRange} mode={chartMode} onModeChange={setChartMode} />
       </div>
     </div>
   );
