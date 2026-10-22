@@ -135,7 +135,48 @@ SQLite. The Stage 2A CSV data remains the only persisted price data.
 
 ## Errors and service restrictions observed
 
-- No HTTP errors, rate-limit responses or auth challenges during about 40
-  paced calls.
+- First probe window (about 40 paced calls): no HTTP errors, rate-limit
+  responses or auth challenges.
+- Later: intermittent `404 Session not found` (see the next section). There
+  was still no 401/403/429 and no `Retry-After`.
 - Bhavcopy `source` field values seen: `"in-memory-cache"`. This is the
   server's own cache and is unrelated to our labels.
+- **Bhavcopy publication timing:** at ~16:00 UTC on 22 Oct the latest session
+  was 21 Oct. By ~17:30 UTC (23:00 IST) Bhavcopy also served **22 Oct**, with
+  OHLC equal to that day's final CM quote (O 1206.2 / H 1208 / L 1184.5 /
+  C 1184.5 for RELIANCE). The daily candle therefore appears the same evening.
+  MarketPulse shows it only when Bhavcopy itself returns it; a quote is never
+  turned into a candle.
+
+## Intermittent "Session not found" (observed from 17:20 UTC, 22 Oct 2026)
+
+About 85 minutes after the first probe, both servers began answering requests
+on **valid, freshly created** sessions with
+`HTTP 404 {"message":"Session not found: <id>"}`, from a Java WebFlux MCP
+transport behind Apache.
+
+- The same session was accepted moments later. Sequences of statuses for
+  initialize → initialized → tools/list ×3 on fresh sessions looked like
+  `[404,404,404,200]`, `[404,200,200,200]` and `[202,404,404,200]`.
+- This is consistent with load-balanced backends that do not share session
+  state. It is server-side behaviour, not authentication or rate limiting.
+- Requests without a session are rejected with 400, so stateless use is not
+  possible.
+
+**MarketPulse's handling** (`sessionTolerantFetch` in
+[nse-mcp-client.ts](../../src/lib/market-data/nse-mcp-client.ts)):
+
+- It retries **only** that exact response (POST + session header + 404 + body
+  "Session not found"), at most 3 times with 250/500/1000 ms backoff.
+- It changes no headers and never retries 429, 5xx or other errors.
+- Remaining failures use the normal path: labelled local CSV fallback, a stale
+  quote with its original timestamp, or an explicit error, plus a 60 s
+  circuit breaker.
+
+**Observed effect:**
+
+- **Before the fix**, the running app correctly fell back to "Local CSV —
+  Historical EOD" (`fallbackReason: UNAVAILABLE`) and "Cached — Stale" quotes.
+- **After the fix**, live requests for ITC, TCS and RELIANCE returned "NSE
+  Bhavcopy — Historical EOD" and "NSE CM Market — Delayed Quote", while the
+  NSE front end was still intermittently returning these 404s.

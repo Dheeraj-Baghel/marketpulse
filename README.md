@@ -225,6 +225,9 @@ the server** (`server-only`); the browser only calls `/api/*`. It:
 - uses the official SDK's Streamable HTTP transport and verifies tools at connect;
 - reuses one connection per server, reconnecting lazily;
 - applies per-call timeouts and 150 ms polite pacing per server;
+- retries only NSE's intermittent `404 Session not found` on a valid session
+  (at most 3 times; see [FINDINGS](docs/nse-mcp/FINDINGS.md)), and never
+  retries 429/5xx;
 - trips a circuit breaker after 3 consecutive failures;
 - validates every payload ([normalize.ts](src/lib/market-data/normalize.ts));
 - exposes health at `GET /api/market-data/status`, which makes no upstream calls.
@@ -408,6 +411,10 @@ Synthetic fixtures exist only inside explicitly labelled unit tests. It writes
 - Market-session detection is clock-based (09:15–15:30 IST, Mon–Fri) and does
   not know NSE holidays. It only gates background refresh; the displayed
   timestamp always comes from NSE.
+- NSE's MCP front end intermittently rejects valid sessions
+  (`404 Session not found`, observed 22 Oct 2026). MarketPulse retries that
+  specific response a few times. If it persists, the app shows the labelled
+  CSV fallback or a stale quote, so data may briefly come from the fallback.
 - NSE does not publish numeric rate limits. MarketPulse paces calls and backs
   off, but heavy use could still be throttled; that surfaces as
   `PROVIDER_RATE_LIMITED`.

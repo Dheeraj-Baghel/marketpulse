@@ -13,6 +13,18 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
+/** Same bounded "Session not found" retry as the app client (see nse-mcp-client.ts). */
+function sessionTolerantFetch(): typeof fetch {
+  return async (input, init) => {
+    for (let attempt = 0; ; attempt++) {
+      const res = await fetch(input, init);
+      if (res.status !== 404 || attempt >= 3 || !new Headers(init?.headers).get("mcp-session-id")) return res;
+      if (!/Session not found/i.test(await res.clone().text().catch(() => ""))) return res;
+      await new Promise((r) => setTimeout(r, 250 * 2 ** attempt));
+    }
+  };
+}
+
 const SERVERS = {
   bhavcopy: "https://mcp.nseindia.in/bhavcopy/cm/mcp",
   cmmkt: "https://mcp.nseindia.in/cmmkt/mcp",
@@ -24,7 +36,7 @@ fs.mkdirSync(OUT, { recursive: true });
 for (const [name, url] of Object.entries(SERVERS)) {
   const started = Date.now();
   const client = new Client({ name: "marketpulse-probe", version: "0.1.0" });
-  const transport = new StreamableHTTPClientTransport(new URL(url));
+  const transport = new StreamableHTTPClientTransport(new URL(url), { fetch: sessionTolerantFetch() });
   try {
     await client.connect(transport, { timeout: 20_000 });
     const server = client.getServerVersion();

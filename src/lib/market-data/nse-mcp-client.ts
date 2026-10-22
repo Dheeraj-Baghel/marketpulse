@@ -131,6 +131,34 @@ const MAX_RESPONSE_CHARS = 2_000_000;
 /** After this many consecutive failures, skip the server for config.cooldownMs. */
 const BREAKER_THRESHOLD = 3;
 
+/**
+ * Observed 22 Oct 2026 (docs/nse-mcp/FINDINGS.md): NSE's MCP front end
+ * intermittently answers a valid, just-created session with
+ * HTTP 404 "Session not found" and accepts the same session moments later
+ * (e.g. 404,404,200,200,404,200 for six requests on one session) — consistent
+ * with load-balanced backends that do not share session state. This fetch
+ * wrapper retries ONLY that exact response, a bounded number of times with
+ * backoff. It changes no headers and bypasses no limit; 429/5xx/other 4xx
+ * are returned untouched.
+ */
+const SESSION_RETRY_DELAYS_MS = [250, 500, 1000];
+export function sessionTolerantFetch(base: typeof fetch = fetch): typeof fetch {
+  return async (input, init) => {
+    const body = init?.body;
+    const replayable = body === undefined || body === null || typeof body === "string";
+    for (let attempt = 0; ; attempt++) {
+      const res = await base(input, init);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (res.status !== 404 || method !== "POST" || !replayable || attempt >= SESSION_RETRY_DELAYS_MS.length) return res;
+      const sessionHeader = new Headers(init?.headers).get("mcp-session-id");
+      if (!sessionHeader) return res;
+      const text = await res.clone().text().catch(() => "");
+      if (!/Session not found/i.test(text)) return res;
+      await new Promise((r) => setTimeout(r, SESSION_RETRY_DELAYS_MS[attempt]));
+    }
+  };
+}
+
 export class NseMcpClient implements McpTransportLike {
   private readonly connections = new Map<NseServer, Promise<Connection>>();
   private readonly state = new Map<NseServer, ServerHealth>();
@@ -165,6 +193,7 @@ export class NseMcpClient implements McpTransportLike {
   private async connect(server: NseServer): Promise<Connection> {
     const client = new Client({ name: "marketpulse", version: "0.2.0" });
     const transport = new StreamableHTTPClientTransport(new URL(this.config.urls[server]), {
+      fetch: sessionTolerantFetch(),
       reconnectionOptions: { maxReconnectionDelay: 10_000, initialReconnectionDelay: 1000, reconnectionDelayGrowFactor: 2, maxRetries: 1 },
     });
     await client.connect(transport, { timeout: this.config.timeoutMs });
@@ -311,11 +340,14 @@ export function parseToolResult(result: unknown, server: NseServer, tool: string
   return json;
 }
 
+const CLIENT_REVISION = 2; // 2 = session-tolerant fetch
+
 // One client per server process (survives Next.js dev hot reloads).
 const g = globalThis as unknown as { __mpNseMcp?: { key: string; client: NseMcpClient } };
 export function getNseMcpClient(): NseMcpClient {
   const config = readMcpConfig();
-  const key = JSON.stringify({ e: config.enabled, u: config.urls, t: config.timeoutMs, c: config.cooldownMs, g: config.minIntervalMs });
+  // CLIENT_REVISION: bump when client behaviour changes so dev hot reloads drop the old singleton.
+  const key = JSON.stringify({ r: CLIENT_REVISION, e: config.enabled, u: config.urls, t: config.timeoutMs, c: config.cooldownMs, g: config.minIntervalMs });
   if (!g.__mpNseMcp || g.__mpNseMcp.key !== key) {
     void g.__mpNseMcp?.client.close();
     g.__mpNseMcp = { key, client: new NseMcpClient(config) };

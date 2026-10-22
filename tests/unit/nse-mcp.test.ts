@@ -130,6 +130,47 @@ describe("MCP client: tool result parsing + config allowlist", () => {
   });
 });
 
+describe("session-tolerant fetch (NSE intermittent 'Session not found')", () => {
+  const mk = (seq: { status: number; body: string }[]) => {
+    let i = 0;
+    const calls: string[] = [];
+    const f = (async (_u: unknown, init?: RequestInit) => {
+      calls.push(String(init?.method));
+      const r = seq[Math.min(i++, seq.length - 1)]!;
+      return new Response(r.body, { status: r.status });
+    }) as typeof fetch;
+    return { f, calls };
+  };
+  const init = { method: "POST", headers: { "mcp-session-id": "abc" }, body: "{}" };
+
+  test("retries only a 404 'Session not found' on a session POST, then succeeds", async () => {
+    const { f, calls } = mk([{ status: 404, body: '{"message":"Session not found: abc"}' }, { status: 404, body: "Session not found" }, { status: 200, body: "ok" }]);
+    const res = await m.client.sessionTolerantFetch(f)("https://x", init);
+    assert.equal(res.status, 200);
+    assert.equal(calls.length, 3);
+  });
+
+  test("does not retry other errors, rate limits, or requests without a session", async () => {
+    for (const r of [{ status: 404, body: "Not Found" }, { status: 429, body: "slow down" }, { status: 503, body: "down" }]) {
+      const { f, calls } = mk([r, { status: 200, body: "ok" }]);
+      const res = await m.client.sessionTolerantFetch(f)("https://x", init);
+      assert.equal(res.status, r.status);
+      assert.equal(calls.length, 1);
+    }
+    const { f, calls } = mk([{ status: 404, body: "Session not found" }, { status: 200, body: "ok" }]);
+    const res = await m.client.sessionTolerantFetch(f)("https://x", { method: "POST", body: "{}" });
+    assert.equal(res.status, 404);
+    assert.equal(calls.length, 1);
+  });
+
+  test("gives up after a bounded number of retries", async () => {
+    const { f, calls } = mk([{ status: 404, body: "Session not found" }]);
+    const res = await m.client.sessionTolerantFetch(f)("https://x", init);
+    assert.equal(res.status, 404);
+    assert.equal(calls.length, 4); // 1 + 3 retries
+  });
+});
+
 describe("normalisation", () => {
   test("exact scaled prices; ascending; de-duplicated; foreign series excluded", () => {
     const n = m.norm.normalizeHistoryRows(

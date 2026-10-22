@@ -72,9 +72,10 @@ const g = globalThis as unknown as { __mpProviders?: { key: string; value: Marke
 /** Process-wide providers (shared caches survive dev hot reloads). Tests inject their own. */
 export function getMarketDataProviders(): MarketDataProviders {
   const config = readMarketDataConfig();
+  const mcpClient = getNseMcpClient();
   const key = JSON.stringify(config);
-  if (!g.__mpProviders || g.__mpProviders.key !== key) {
-    const mcp = getNseMcpClient();
+  if (!g.__mpProviders || g.__mpProviders.key !== key || g.__mpProviders.value.mcp !== mcpClient) {
+    const mcp = mcpClient;
     g.__mpProviders = {
       key,
       value: {
