@@ -1,0 +1,48 @@
+{
+  "name": "marketpulse",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal NSE stock research workspace. Stage 1: official NSE securities directory and dashboard.",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "dev": "next dev -p 4327",
+    "build": "next build",
+    "start": "next start -p 4327",
+    "lint": "eslint .",
+    "typecheck": "next typegen && tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "import:nse": "tsx scripts/import-nse.ts",
+    "test": "tsx --test tests/unit/*.test.ts",
+    "test:e2e": "tsx tests/e2e/browser.mts",
+    "check": "npm run lint && npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.4",
+    "lucide-react": "^1.61.0",
+    "next": "^16.4.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^3.7.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.2",
+    "playwright": "^1.64.1",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
+  }
+}

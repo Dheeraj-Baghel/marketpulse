@@ -1,0 +1,9 @@
+node_modules/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+.env*.local
+# Local SQLite databases and the user-supplied official NSE CSV files.
+data/*.sqlite*
+data/nse/*.csv
+test-results/

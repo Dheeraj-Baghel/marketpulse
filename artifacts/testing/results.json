@@ -1,0 +1,62 @@
+{
+  "ranAt": "2026-10-22T05:45:32.674Z",
+  "base": "http://127.0.0.1:4329",
+  "results": [
+    {
+      "name": "1. Homepage loads without runtime errors",
+      "ok": true,
+      "detail": "HTTP 200, no console/page errors"
+    },
+    {
+      "name": "2. Empty database shows import instructions",
+      "ok": true,
+      "detail": "onboarding, disabled search, 'Directory empty' status"
+    },
+    {
+      "name": "3. Official CSV files import successfully",
+      "ok": true,
+      "detail": "3193 securities; ✓ EQUITY_L.csv [MAINBOARD] rows=2611 inserted=2611 updated=0 unchanged=0 rejected=0 duplicates=0 deactivated=0 / ✓ SME_EQUITY_L.csv [SME] rows=582 inserted=582 updated=0 unchanged=0 rejected=0 duplicates=0 deactivated=0"
+    },
+    {
+      "name": "4. Company search works (name, partial, case-insensitive)",
+      "ok": true,
+      "detail": "'tata mot' -> TMCV, TMPV; ISIN 'INE144J' -> 20MICRONS; no-match state shown"
+    },
+    {
+      "name": "5. Search by NSE symbol works",
+      "ok": true,
+      "detail": "'infy' -> first row INFY (1 rows)"
+    },
+    {
+      "name": "6. Pagination works",
+      "ok": true,
+      "detail": "p1 20MICRONS…, p2 AATMAJ…; \"26–50 of 3,191 · page 2 of 128\" -> last \"3,176–3,191 of 3,191 · page 128 of 128\""
+    },
+    {
+      "name": "7. Company selection works (mouse and keyboard)",
+      "ok": true,
+      "detail": "click -> 360ONE, ArrowDown -> 3BBLACKBIO; chart placeholder present"
+    },
+    {
+      "name": "8. Company details open correctly",
+      "ok": true,
+      "detail": "\"Reliance Industries Limited\" with identity fields + 3 inert placeholders; /stocks/reliance redirects; unknown symbol 404; back link works"
+    },
+    {
+      "name": "9. Mobile layout is usable",
+      "ok": true,
+      "detail": "390px: no overflow, search+tap select scrolls preview into view, details fit; 820px tablet fits"
+    },
+    {
+      "name": "10. Repeat import does not create duplicates",
+      "ok": true,
+      "detail": "3193 -> 3193 securities; 4 logged import runs; ✓ EQUITY_L.csv [MAINBOARD] rows=2611 inserted=0 updated=0 unchanged=2611 rejected=0 duplicates=0 deactivated=0 / ✓ SME_EQUITY_L.csv [SME] rows=582 inserted=0 updated=0 unchanged=582 rejected=0 duplicates=0 deactivated=0"
+    },
+    {
+      "name": "No browser console errors during the run",
+      "ok": true,
+      "detail": "0 errors"
+    }
+  ],
+  "consoleErrors": []
+}
