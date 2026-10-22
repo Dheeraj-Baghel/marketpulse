@@ -7,3 +7,6 @@ next-env.d.ts
 data/*.sqlite*
 data/nse/*.csv
 test-results/
+data/prices/*.csv
+data/backups/
+.DS_Store
