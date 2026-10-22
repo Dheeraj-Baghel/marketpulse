@@ -1,4 +1,4 @@
-import { ArrowUpRight, LineChart, MousePointerClick } from "lucide-react";
+import { ArrowUpRight, Database, DatabaseBackup, LineChart, MousePointerClick } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -57,11 +57,41 @@ export function SelectedCompanyPanel({ row }: { row: DirectoryRow | null }) {
           </span>
           <p className="mt-3 text-sm font-medium text-fg">Price chart not configured yet</p>
           <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-            No market-data provider is connected, so no prices or price movements are shown.
+            Charts arrive in a later stage. No prices or price movements are shown here.
           </p>
+          {row ? <PriceDataStatus row={row} /> : null}
         </div>
       </div>
     </section>
+  );
+}
+
+/** Factual availability of imported end-of-day history. Dates only, never prices. */
+export function PriceDataStatus({ row }: { row: DirectoryRow }) {
+  const history = row.priceHistory;
+  if (history.length === 0) {
+    return (
+      <p data-testid="price-data-status" className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-line bg-bg/60 px-2.5 py-1 text-[11.5px] text-fg-muted">
+        <DatabaseBackup className="size-3.5" aria-hidden="true" />
+        Historical price data not available
+      </p>
+    );
+  }
+  const showSeries = history.length > 1 || row.series.length > 1;
+  return (
+    <div data-testid="price-data-status" className="mt-4 flex flex-col items-center gap-1">
+      {history.map((h) => (
+        <p key={h.series} className="inline-flex items-center gap-1.5 rounded-md border border-accent/25 bg-accent/[0.06] px-2.5 py-1 text-[11.5px] text-fg">
+          <Database className="size-3.5 text-accent" aria-hidden="true" />
+          <span>
+            Historical price data available{showSeries ? ` (${h.series})` : ""} — latest trading date:{" "}
+            <time dateTime={h.latestTradingDate} className="font-medium">
+              {formatIsoDate(h.latestTradingDate)}
+            </time>
+          </span>
+        </p>
+      ))}
+    </div>
   );
 }
 

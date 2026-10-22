@@ -1,0 +1,1 @@
+{"error":{"code":"UNSUPPORTED_RANGE","message":"Unsupported range \"10D\". Use one of 1M, 3M, 6M, YTD, 1Y, 2Y, 5Y, MAX.","supportedRanges":["1M","3M","6M","YTD","1Y","2Y","5Y","MAX"]}}

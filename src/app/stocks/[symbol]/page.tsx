@@ -7,6 +7,7 @@ import { FutureSection } from "@/components/company/future-section";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCompanyBySymbol, normaliseSymbolParam } from "@/lib/directory/queries";
+import { LocalNseHistoricalProvider } from "@/lib/market-data/local-nse-provider";
 import {
   formatIsoDate,
   formatRupees,
@@ -39,6 +40,10 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
   if (decodeURIComponent(raw) !== symbol) permanentRedirect(stockHref(symbol));
 
   const primary = company.listings[0];
+  // Stage 2A: dates of imported history per series. No price values are shown.
+  const provider = new LocalNseHistoricalProvider();
+  const coverage = company.listings.map((l) => ({ series: l.series, ...provider.coverage(l.id) }));
+  const withData = coverage.filter((c) => c.count > 0);
 
   return (
     <AppShell active={null}>
@@ -109,7 +114,24 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
               <div className="m-4 flex flex-1 flex-col items-center justify-center rounded-md border border-dashed border-line px-6 py-8 text-center chart-grid">
                 <LineChart className="size-5 text-fg-muted" aria-hidden="true" />
                 <p className="mt-2 text-sm font-medium">Price chart not configured yet</p>
-                <p className="mt-1 text-xs text-fg-muted">No market-data provider is connected.</p>
+                <p className="mt-1 text-xs text-fg-muted">Charts arrive in a later stage.</p>
+                <div data-testid="price-data-status" className="mt-3 text-[11.5px]">
+                  {withData.length === 0 ? (
+                    <p className="text-fg-muted">Historical price data not available</p>
+                  ) : (
+                    withData.map((c) => (
+                      <p key={c.series} className="text-fg">
+                        Historical price data available{coverage.length > 1 ? ` (${c.series})` : ""} — latest trading date:{" "}
+                        <time dateTime={c.latest ?? undefined} className="font-medium">
+                          {formatIsoDate(c.latest)}
+                        </time>
+                        <span className="block text-fg-muted">
+                          {c.count} trading days from {formatIsoDate(c.earliest)} · NSE CSV import, unadjusted
+                        </span>
+                      </p>
+                    ))
+                  )}
+                </div>
               </div>
             </Card>
 

@@ -23,7 +23,8 @@ const OUT = path.join(ROOT, "artifacts/testing");
 const SHOTS = path.join(ROOT, "artifacts/screenshots");
 const dbDir = fs.mkdtempSync(path.join(os.tmpdir(), "marketpulse-e2e-"));
 const DB = path.join(dbDir, "e2e.sqlite");
-const env = { ...process.env, MARKETPULSE_DB_PATH: DB, NEXT_TELEMETRY_DISABLED: "1" };
+// Separate build dir so this run can coexist with a developer's `npm run dev`.
+const env = { ...process.env, MARKETPULSE_DB_PATH: DB, MARKETPULSE_DIST_DIR: ".next-e2e", NEXT_TELEMETRY_DISABLED: "1" };
 
 for (const f of ["EQUITY_L.csv", "SME_EQUITY_L.csv"]) {
   if (!fs.existsSync(path.join(ROOT, "data/nse", f))) {
@@ -58,6 +59,14 @@ function runImport(): string {
   return execFileSync("npx", ["tsx", "scripts/import-nse.ts"], { cwd: ROOT, env, encoding: "utf8" });
 }
 
+/** Stage 2A: real RELIANCE price CSV, if the user has supplied it. */
+function realPriceFile(symbol: string): string | null {
+  const dir = path.join(ROOT, "data/prices");
+  if (!fs.existsSync(dir)) return null;
+  const hit = fs.readdirSync(dir).find((f) => f.toUpperCase() === `${symbol}.CSV`);
+  return hit ? path.join(dir, hit) : null;
+}
+
 function dbCounts() {
   const db = new Database(DB, { readonly: true });
   const r = db
@@ -79,7 +88,7 @@ async function waitForServer() {
     }
     await new Promise((r) => setTimeout(r, 500));
   }
-  throw new Error("dev server did not start");
+  throw new Error(`dev server did not start:\n${serverLog.split("\n").slice(-15).join("\n")}`);
 }
 
 async function rowSymbols(page: Page) {
@@ -89,7 +98,7 @@ async function rowSymbols(page: Page) {
 async function searchFor(page: Page, text: string) {
   const input = page.getByRole("searchbox", { name: /search nse companies/i });
   await input.fill(text);
-  await page.waitForURL((u) => u.searchParams.get("q") === text.trim(), { timeout: 10_000 });
+  await page.waitForURL((u) => u.searchParams.get("q") === text.trim(), { timeout: 60_000 });
   await page.waitForFunction(() => !document.querySelector("[aria-busy='true']"));
 }
 
@@ -103,6 +112,9 @@ try {
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
+  // Cold dev-server compiles of a new route can take >30 s on a loaded machine.
+  page.setDefaultTimeout(120_000);
+  page.setDefaultNavigationTimeout(180_000);
   page.on("console", (m) => {
     if (m.type() !== "error") return;
     if (expect404 && /status of 404/.test(m.text())) return; // deliberate unknown-symbol check
@@ -233,6 +245,8 @@ try {
   await check("9. Mobile layout is usable", async () => {
     const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const m = await mobile.newPage();
+    m.setDefaultTimeout(120_000);
+    m.setDefaultNavigationTimeout(180_000);
     m.on("pageerror", (e) => consoleErrors.push(`mobile pageerror: ${e.message}`));
     await m.goto(`${BASE}/`);
     await m.getByRole("table").waitFor();
@@ -259,6 +273,7 @@ try {
 
     const tablet = await browser.newContext({ viewport: { width: 820, height: 1180 } });
     const t = await tablet.newPage();
+    t.setDefaultNavigationTimeout(180_000);
     await t.goto(`${BASE}/`);
     await t.getByRole("table").waitFor();
     const tOverflow = await t.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -279,6 +294,53 @@ try {
     await page.goto(`${BASE}/`);
     await page.getByRole("table").waitFor();
     return `${before.n} -> ${after.n} securities; ${after.imports} logged import runs; ${output.trim().split("\n").filter((l) => l.startsWith("✓")).join(" / ")}`;
+  });
+
+  const relianceCsv = realPriceFile("RELIANCE");
+  await check("11. Stage 2A: price status shows availability, never prices", async () => {
+    // Before import: no data for a valid company.
+    await searchFor(page, "RELIANCE");
+    await page.locator("tbody tr[data-symbol='RELIANCE'] td").first().click();
+    const status = page.getByTestId("price-data-status");
+    assert((await status.innerText()).includes("Historical price data not available"), "expected 'not available' before import");
+    if (!relianceCsv) return "real RELIANCE CSV absent: only the 'not available' state was checked";
+    const out = execFileSync("npx", ["tsx", "scripts/import-prices.ts", "--symbol", "RELIANCE", "--series", "EQ", relianceCsv], { cwd: ROOT, env, encoding: "utf8" });
+    assert(/inserted=\d+/.test(out), out);
+    await page.reload();
+    await page.locator("tbody tr[data-symbol='RELIANCE'] td").first().click();
+    const text = await status.innerText();
+    assert(/Historical price data available — latest trading date: \d{2} \w{3} \d{4}/.test(text), `status: ${text}`);
+    const panel = await page.locator("section[aria-labelledby='selected-heading']").innerText();
+    assert(!/₹|%|\d,\d{3}\.\d{2}/.test(panel), `panel shows price-like values: ${panel}`);
+    assert(await page.getByText("Price chart not configured yet").isVisible(), "chart placeholder must remain");
+    await page.screenshot({ caret: "initial", path: path.join(SHOTS, "10-price-status-available.png") });
+    await searchFor(page, "INFY");
+    assert((await status.innerText()).includes("Historical price data not available"), "INFY should have no data");
+    await page.goto(`${BASE}/stocks/RELIANCE`);
+    const detail = await page.getByTestId("price-data-status").innerText();
+    assert(/latest trading date/.test(detail) && /trading days from/.test(detail), `details: ${detail}`);
+    await page.screenshot({ caret: "initial", path: path.join(SHOTS, "11-details-price-status.png"), fullPage: true });
+    return `before: not available; after real import: "${text.trim()}"; INFY not available; details page shows coverage`;
+  });
+
+  await check("12. Stage 2A: /api/prices contract and errors", async () => {
+    const get = async (qs: string) => {
+      const r = await fetch(`${BASE}/api/prices?${qs}`);
+      return { status: r.status, body: (await r.json()) as Record<string, unknown> & { candles?: { date: string }[]; error?: { code: string } } };
+    };
+    const empty = await get("symbol=INFY&series=EQ&range=1Y");
+    assert(empty.status === 200 && empty.body.candles?.length === 0 && empty.body.latestTradingDate === null, "INFY should be empty");
+    const amb = await get("symbol=HAMPTON&range=1Y");
+    assert(amb.status === 409 && amb.body.error?.code === "AMBIGUOUS_SERIES", `HAMPTON ${amb.status}`);
+    const bad = await get("symbol=RELIANCE&range=7W");
+    assert(bad.status === 400 && bad.body.error?.code === "UNSUPPORTED_RANGE", "range");
+    const unknown = await get("symbol=ZZZZNOPE");
+    assert(unknown.status === 404, "unknown");
+    if (!relianceCsv) return "contract/errors verified; no real price file for populated response";
+    const rel = await get("symbol=RELIANCE&series=EQ&range=1M");
+    const dates = (rel.body.candles ?? []).map((c) => c.date);
+    assert(rel.status === 200 && dates.length > 0 && dates.join() === [...dates].sort().join(), "sorted candles");
+    return `INFY empty 200; HAMPTON 409; bad range 400; unknown 404; RELIANCE 1M ${dates.length} ascending candles ${dates[0]}..${dates.at(-1)}`;
   });
 
   await check("No browser console errors during the run", async () => {

@@ -8,6 +8,9 @@ const config: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
   // The floating dev badge overlaps the sidebar footer; errors still surface in the overlay.
   devIndicators: false,
+  // Lets the browser test suite run its own isolated dev server (separate build
+  // folder) while the normal `npm run dev` server on 4327 keeps running.
+  ...(process.env.MARKETPULSE_DIST_DIR ? { distDir: process.env.MARKETPULSE_DIST_DIR } : {}),
 };
 
 export default config;

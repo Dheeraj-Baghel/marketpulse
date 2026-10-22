@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { directoryImports, securities, SEGMENTS, type InstrumentKind, type Segment } from "@/db/schema";
+import { dailyPrices, directoryImports, securities, SEGMENTS, type InstrumentKind, type Segment } from "@/db/schema";
 
 export const PAGE_SIZE = 25;
 export const MAX_QUERY_LENGTH = 64;
@@ -23,6 +23,12 @@ export interface DirectoryRow {
   series: string[];
   instrumentKind: InstrumentKind;
   listingDate: string | null;
+  /**
+   * Stage 2A: imported daily price coverage per series that has any
+   * (e.g. [{ series: "EQ", latestTradingDate: "2026-10-21" }]). Empty when none.
+   * Dates only; no price values are exposed to the dashboard.
+   */
+  priceHistory: { series: string; latestTradingDate: string; days: number }[];
 }
 
 export interface DirectoryPage {
@@ -103,6 +109,30 @@ export function getDirectoryPage(query: DirectoryQuery): DirectoryPage {
     .offset((page - 1) * PAGE_SIZE)
     .all();
 
+  // Price coverage for just the visible page: one grouped query.
+  const coverage = new Map<string, { series: string; latestTradingDate: string; days: number }[]>();
+  if (raw.length > 0) {
+    const keys = raw.map((r) => sql`(${r.segment}, ${r.symbol})`);
+    const covRows = db
+      .select({
+        segment: securities.segment,
+        symbol: securities.symbol,
+        series: securities.series,
+        latest: sql<string>`max(${dailyPrices.tradeDate})`,
+        days: sql<number>`count(*)`,
+      })
+      .from(dailyPrices)
+      .innerJoin(securities, eq(securities.id, dailyPrices.securityId))
+      .where(sql`(${securities.segment}, ${securities.symbol}) IN (VALUES ${sql.join(keys, sql`, `)})`)
+      .groupBy(securities.id)
+      .orderBy(asc(securities.series))
+      .all();
+    for (const c of covRows) {
+      const key = `${c.segment}:${c.symbol}`;
+      coverage.set(key, [...(coverage.get(key) ?? []), { series: c.series, latestTradingDate: c.latest, days: c.days }]);
+    }
+  }
+
   return {
     rows: raw.map((r) => ({
       symbol: r.symbol,
@@ -112,6 +142,7 @@ export function getDirectoryPage(query: DirectoryQuery): DirectoryPage {
       series: r.series.split(",").sort(),
       instrumentKind: r.instrumentKind,
       listingDate: r.listingDate,
+      priceHistory: coverage.get(`${r.segment}:${r.symbol}`) ?? [],
     })),
     total,
     page,

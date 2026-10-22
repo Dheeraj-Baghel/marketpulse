@@ -1,0 +1,47 @@
+
+> marketpulse@0.1.0 test:e2e
+> tsx tests/e2e/browser.mts
+
+✓ 1. Homepage loads without runtime errors — HTTP 200, no console/page errors
+✓ 2. Empty database shows import instructions — onboarding, disabled search, 'Directory empty' status
+✓ 3. Official CSV files import successfully — 3193 securities; ✓ EQUITY_L.csv [MAINBOARD] rows=2611 inserted=2611 updated=0 unchanged=0 rejected=0 duplicates=0 deactivated=0 / ✓ SME_EQUITY_L.csv [SME] rows=582 inserted=582 updated=0 unchanged=0 rejected=0 duplicates=0 deactivated=0
+✓ 4. Company search works (name, partial, case-insensitive) — 'tata mot' -> TMCV, TMPV; ISIN 'INE144J' -> 20MICRONS; no-match state shown
+✓ 5. Search by NSE symbol works — 'infy' -> first row INFY (1 rows)
+✓ 6. Pagination works — p1 20MICRONS…, p2 AATMAJ…; "26–50 of 3,191 · page 2 of 128" -> last "3,176–3,191 of 3,191 · page 128 of 128"
+✓ 7. Company selection works (mouse and keyboard) — click -> 360ONE, ArrowDown -> 3BBLACKBIO; chart placeholder present
+✗ 8. Company details open correctly — page.waitForURL: Timeout 30000ms exceeded.
+✗ 9. Mobile layout is usable — page.waitForURL: Timeout 30000ms exceeded.
+✓ 10. Repeat import does not create duplicates — 3193 -> 3193 securities; 4 logged import runs; ✓ EQUITY_L.csv [MAINBOARD] rows=2611 inserted=0 updated=0 unchanged=2611 rejected=0 duplicates=0 deactivated=0 / ✓ SME_EQUITY_L.csv [SME] rows=582 inserted=0 updated=0 unchanged=582 rejected=0 duplicates=0 deactivated=0
+✓ No browser console errors during the run — 0 errors
+
+9/11 checks passed
+  The following suggested values were added to your tsconfig.json. These values can be changed to fit your project's needs:
+
+  	- include was updated to add '.next-e2e/types/**/*.ts'
+  	- include was updated to add '.next-e2e/dev/types/**/*.ts'
+
+
+○ Compiling / ...
+ GET / 200 in 22.1s (next.js: 5.6s, application-code: 16.5s)
+✓ Finished writing to filesystem cache in 17.8s
+ GET / 200 in 17.8s (next.js: 37ms, application-code: 17.7s)
+ GET / 200 in 3.6s (next.js: 63ms, application-code: 3.6s)
+ GET /?q=tata+mot 200 in 4.4s (next.js: 268ms, application-code: 4.1s)
+ GET /?q=INE144J 200 in 1995ms (next.js: 193ms, application-code: 1802ms)
+ GET /?q=zzqqxx 200 in 1672ms (next.js: 67ms, application-code: 1604ms)
+ GET /?q=infy 200 in 989ms (next.js: 149ms, application-code: 840ms)
+ GET / 200 in 300ms (next.js: 67ms, application-code: 233ms)
+ GET / 200 in 635ms (next.js: 22ms, application-code: 613ms)
+ GET /?page=2 200 in 1309ms (next.js: 97ms, application-code: 1212ms)
+ GET /?page=128 200 in 828ms (next.js: 168ms, application-code: 661ms)
+ GET / 200 in 136ms (next.js: 67ms, application-code: 69ms)
+ GET / 200 in 603ms (next.js: 19ms, application-code: 583ms)
+ GET /?q=RELIANCE 200 in 1432ms (next.js: 155ms, application-code: 1277ms)
+○ Compiling /stocks/[symbol] ...
+✓ Finished writing to filesystem cache in 45s
+ GET / 200 in 6.6s (next.js: 49ms, application-code: 6.5s)
+ GET /stocks/RELIANCE 200 in 107s (next.js: 65s, application-code: 42s)
+ GET /?q=hdfc 200 in 20.8s (next.js: 1502ms, application-code: 19.3s)
+✓ Finished filesystem cache database compaction in 38.6s
+ GET / 200 in 1381ms (next.js: 34ms, application-code: 1347ms)
+

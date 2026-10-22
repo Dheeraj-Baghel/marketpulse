@@ -1,0 +1,1 @@
+{"error":{"code":"AMBIGUOUS_SERIES","message":"HAMPTON trades in several series (BZ, EQ). Pass ?series= explicitly.","availableSeries":["BZ","EQ"]}}

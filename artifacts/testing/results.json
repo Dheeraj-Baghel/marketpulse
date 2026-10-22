@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-10-22T05:45:32.674Z",
+  "ranAt": "2026-10-22T09:50:40.123Z",
   "base": "http://127.0.0.1:4329",
   "results": [
     {
@@ -51,6 +51,16 @@
       "name": "10. Repeat import does not create duplicates",
       "ok": true,
       "detail": "3193 -> 3193 securities; 4 logged import runs; ✓ EQUITY_L.csv [MAINBOARD] rows=2611 inserted=0 updated=0 unchanged=2611 rejected=0 duplicates=0 deactivated=0 / ✓ SME_EQUITY_L.csv [SME] rows=582 inserted=0 updated=0 unchanged=582 rejected=0 duplicates=0 deactivated=0"
+    },
+    {
+      "name": "11. Stage 2A: price status shows availability, never prices",
+      "ok": true,
+      "detail": "before: not available; after real import: \"Historical price data available — latest trading date: 21 Oct 2026\"; INFY not available; details page shows coverage"
+    },
+    {
+      "name": "12. Stage 2A: /api/prices contract and errors",
+      "ok": true,
+      "detail": "INFY empty 200; HAMPTON 409; bad range 400; unknown 404; RELIANCE 1M 20 ascending candles 2026-09-22..2026-10-21"
     },
     {
       "name": "No browser console errors during the run",
