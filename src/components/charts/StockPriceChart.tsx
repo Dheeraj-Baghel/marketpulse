@@ -11,6 +11,7 @@ import {
   formatSignedInr,
   formatSignedPct,
   formatVolume,
+  largeDiscontinuities,
   previousSessionChange,
   rangeAvailability,
   sliceRange,
@@ -20,6 +21,8 @@ import {
   type ValidatedSeries,
 } from "@/lib/charts/candles";
 import { cn } from "@/lib/utils";
+import { DelayedQuote } from "./delayed-quote";
+import { useQuote } from "./use-quote";
 import { securityKey, usePriceHistory } from "./use-price-history";
 
 // The chart library touches `window`/canvas: client-only, never server-rendered.
@@ -44,6 +47,8 @@ export interface StockPriceChartProps {
   onModeChange: (mode: ChartMode) => void;
   /** Compact header (dashboard preview) vs full (details page). */
   variant?: "preview" | "full";
+  /** Stage 2C: show the NSE CM Market delayed quote (server decides whether MCP is enabled). */
+  quotes?: { enabled: boolean; autoRefreshMs: number };
   className?: string;
 }
 
@@ -53,11 +58,13 @@ export interface StockPriceChartProps {
  * the dashboard preview and /stocks/[symbol].
  */
 export function StockPriceChart(props: StockPriceChartProps) {
-  const { symbol, series, name, initialData, range, onRangeChange, mode, onModeChange, variant = "preview", className } = props;
+  const { symbol, series, name, initialData, range, onRangeChange, mode, onModeChange, variant = "preview", className, quotes } = props;
   const security = useMemo(() => ({ symbol, series }), [symbol, series]);
   const key = securityKey(security);
   const initial = useMemo(() => (initialData ? { key, data: initialData } : null), [initialData, key]);
-  const { view, retry } = usePriceHistory(security, initial);
+  const { view, retry, refresh: refreshHistory, isRefreshing, refreshError } = usePriceHistory(security, initial);
+  // Separate request + loading state: a slow quote never blocks the chart, and vice versa.
+  const { view: quoteView, refresh: refreshQuote } = useQuote(security, { enabled: quotes?.enabled ?? false, autoRefreshMs: quotes?.autoRefreshMs ?? 0 });
 
   const frameRef = useRef<HTMLDivElement>(null);
   const [resetToken, setResetToken] = useState(0);
@@ -71,6 +78,8 @@ export function StockPriceChart(props: StockPriceChartProps) {
   const latest = allCandles.at(-1) ?? null;
   const change = useMemo(() => previousSessionChange(allCandles), [allCandles]);
   const hasVolume = view.status === "ready" && view.data.hasVolume;
+  // Unadjusted data: flag (never alter) likely corporate-action jumps within the visible range.
+  const jumps = useMemo(() => largeDiscontinuities(sliced.candles), [sliced]);
 
   // Reset hover when the security changes so no stale values show under a new name.
   const [hoverKey, setHoverKey] = useState(key);
@@ -129,6 +138,12 @@ export function StockPriceChart(props: StockPriceChartProps) {
     >
       <ChartHeader symbol={symbol} series={series} name={name} variant={variant} latest={latest} change={change} view={view} />
 
+      {quotes?.enabled ? (
+        <div className="px-4 pb-2 sm:px-5">
+          <DelayedQuote view={quoteView} onRefresh={refreshQuote} symbol={symbol} />
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-2 pt-1 sm:px-5">
         <div role="group" aria-label="Time range" className="flex rounded-md border border-line bg-bg p-0.5">
           {CHART_RANGES.map((r) => {
@@ -167,6 +182,13 @@ export function StockPriceChart(props: StockPriceChartProps) {
           <IconButton label="Reset view" onClick={() => setResetToken((t) => t + 1)} disabled={view.status !== "ready" || sliced.candles.length === 0}>
             <RotateCcw />
           </IconButton>
+          <IconButton
+            label={isRefreshing ? "Refreshing historical data" : "Refresh historical data"}
+            onClick={refreshHistory}
+            disabled={isRefreshing || view.status === "loading" || view.status === "idle"}
+          >
+            <RefreshCw className={isRefreshing ? "animate-spin" : undefined} />
+          </IconButton>
           <IconButton label={fullscreen ? "Exit full screen" : "Full screen"} onClick={toggleFullscreen} pressed={fullscreen}>
             {fullscreen ? <Minimize2 /> : <Maximize2 />}
           </IconButton>
@@ -181,7 +203,7 @@ export function StockPriceChart(props: StockPriceChartProps) {
         ) : view.status === "error" ? (
           <ChartMessage tone="error" icon={AlertTriangle} title={view.error.title} body={view.error.message} action={view.error.retryable ? { label: "Retry", onClick: retry } : undefined} kind={view.error.kind} />
         ) : view.status === "empty" ? (
-          <ChartMessage tone="muted" icon={DatabaseBackup} title="Historical price data is not available for this security." body={`No daily prices have been imported for ${symbol} ${series}. Import an NSE security-wise historical CSV with npm run import:prices.`} kind="no-data" />
+          <ChartMessage tone="muted" icon={DatabaseBackup} title="Historical price data is not available for this security." body={noDataBody(symbol, series, view.data.meta.fallbackReason)} kind="no-data" />
         ) : sliced.candles.length === 0 ? (
           <ChartMessage tone="muted" icon={DatabaseBackup} title={`No stored sessions in the last ${range}.`} body={`Stored history for ${symbol} ends on ${latest ? formatSessionDate(latest.time) : "an unknown date"}. Choose ALL to see every imported session.`} kind="no-range-data" />
         ) : (
@@ -197,12 +219,22 @@ export function StockPriceChart(props: StockPriceChartProps) {
         )}
       </div>
 
-      <ChartFooter view={view} range={range} rangeInfo={ranges[range]} slicedCount={sliced.candles.length} hasVolume={hasVolume} />
+      <ChartFooter view={view} range={range} rangeInfo={ranges[range]} slicedCount={sliced.candles.length} hasVolume={hasVolume} refreshError={refreshError?.message ?? null} jumps={jumps} />
     </div>
   );
 }
 
 const EMPTY: ChartCandle[] = [];
+
+/** Explains WHY there is no history, without implying data exists elsewhere. */
+function noDataBody(symbol: string, series: string, reason: { code: string; message: string } | null): string {
+  const csv = `No local CSV import exists for ${symbol} ${series} either (npm run import:prices).`;
+  if (!reason || reason.code === "DISABLED") return `NSE MCP fetching is disabled and no daily prices have been imported for ${symbol} ${series}. Import an NSE security-wise historical CSV with npm run import:prices.`;
+  if (reason.code === "OVERRIDE") return `Local CSV source selected and no daily prices have been imported for ${symbol} ${series}.`;
+  if (reason.code === "NOT_FOUND") return `NSE Bhavcopy has no daily history for ${symbol} (for example, a very recent listing). ${csv}`;
+  if (reason.code === "SERIES_MISMATCH") return `${reason.message} MarketPulse does not relabel another series' prices. ${csv}`;
+  return `NSE Bhavcopy could not be reached (${reason.message}). ${csv}`;
+}
 
 const ChartHeader = memo(function ChartHeader({
   symbol,
@@ -255,7 +287,7 @@ const ChartHeader = memo(function ChartHeader({
           ) : view.status === "loading" ? (
             <Skeleton className="h-4 w-56" />
           ) : (
-            <p className="text-fg-muted">{view.status === "empty" ? "No imported price history" : view.status === "error" ? "Price data unavailable" : ""}</p>
+            <p className="text-fg-muted">{view.status === "empty" ? "No historical price data" : view.status === "error" ? "Price data unavailable" : ""}</p>
           )}
         </div>
       </div>
@@ -264,8 +296,9 @@ const ChartHeader = memo(function ChartHeader({
           HISTORICAL EOD
         </span>
         {view.status === "ready" ? (
-          <span data-testid="source-badge" className="min-w-0 text-[10.5px] text-fg-muted">
-            Source: Imported NSE historical data · Unadjusted
+          <span data-testid="source-badge" data-source={view.data.meta.sourceId} className="min-w-0 text-[10.5px] text-fg-muted">
+            Source: <span className="text-fg">{view.data.meta.sourceLabel}</span> · Unadjusted
+            {view.data.meta.isStale ? <span className="text-amber-200"> · fallback</span> : null}
           </span>
         ) : null}
       </div>
@@ -335,24 +368,64 @@ function ChartFooter({
   rangeInfo,
   slicedCount,
   hasVolume,
+  refreshError,
+  jumps,
 }: {
   view: ReturnType<typeof usePriceHistory>["view"];
   range: ChartRange;
   rangeInfo: { available: boolean; covered: boolean; sessions: number };
   slicedCount: number;
   hasVolume: boolean;
+  refreshError: string | null;
+  jumps: { from: string; to: string; changePct: number }[];
 }) {
-  if (view.status !== "ready") return null;
-  const { earliestTradingDate, latestTradingDate } = view.data.meta;
+  if (view.status !== "ready" && view.status !== "empty") return null;
+  const meta = view.data.meta;
+  if (view.status === "empty") {
+    return meta.fallbackReason && meta.fallbackReason.code !== "DISABLED" ? (
+      <p data-testid="chart-footer" className="px-4 pb-3 text-[10.5px] text-fg-muted sm:px-5">
+        <span data-testid="fallback-reason">NSE Bhavcopy: {meta.fallbackReason.message}</span>
+      </p>
+    ) : null;
+  }
+  const { earliestTradingDate, latestTradingDate } = meta;
+  const mcp = meta.sourceId === "nse-bhavcopy-mcp";
   return (
     <p data-testid="chart-footer" className="flex flex-wrap gap-x-3 gap-y-0.5 px-4 pb-3 text-[10.5px] text-fg-muted sm:px-5">
       <span>
-        Daily end-of-day, INR, not adjusted for corporate actions. Stored history:{" "}
+        Daily end-of-day, INR, not adjusted for corporate actions. {mcp ? "Loaded from NSE Bhavcopy" : "Stored history"}:{" "}
         {earliestTradingDate ? formatSessionDate(earliestTradingDate, false) : "?"} – {latestTradingDate ? formatSessionDate(latestTradingDate, false) : "?"} ({view.data.candles.length} sessions).
       </span>
+      {mcp && meta.provider ? (
+        <span data-testid="provider-freshness">
+          Fetched {new Date(meta.provider.fetchedAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false })} IST
+          {meta.provider.cached ? " (cached)" : ""}; not stored on this device.
+          {meta.provider.complete ? "" : " Older history loads on demand."}
+        </span>
+      ) : null}
+      {mcp && meta.provider && meta.provider.excludedOtherSeriesRows > 0 ? (
+        <span data-testid="other-series-note">
+          {meta.provider.excludedOtherSeriesRows} session(s) where NSE returned only {meta.provider.otherSeries.join("/")} rows are not shown as {meta.series}.
+        </span>
+      ) : null}
+      {meta.fallbackReason && meta.fallbackReason.code !== "DISABLED" && meta.fallbackReason.code !== "OVERRIDE" ? (
+        <span data-testid="fallback-reason" className="text-amber-200">
+          NSE Bhavcopy unavailable ({meta.fallbackReason.message}); showing local CSV.
+        </span>
+      ) : null}
+      {jumps.length > 0 ? (
+        <span data-testid="discontinuity-note" className="text-amber-200">
+          Unadjusted prices: {jumps.map((j) => `${j.changePct > 0 ? "+" : ""}${j.changePct}% between ${formatSessionDate(j.from, false)} and ${formatSessionDate(j.to, false)}`).join("; ")} may reflect a split or bonus issue, not a market move.
+        </span>
+      ) : null}
+      {refreshError ? (
+        <span data-testid="refresh-error" className="text-amber-200">
+          Refresh failed: {refreshError}
+        </span>
+      ) : null}
       {range !== "ALL" && rangeInfo.available && !rangeInfo.covered ? (
         <span data-testid="range-partial" className="text-amber-200">
-          {range} shows {slicedCount} sessions: stored history is shorter than {range}.
+          {range} shows {slicedCount} sessions: available history is shorter than {range}.
         </span>
       ) : null}
       {!hasVolume ? <span data-testid="volume-missing">Volume not reported by the source; volume pane hidden.</span> : null}

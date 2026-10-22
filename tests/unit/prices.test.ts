@@ -241,7 +241,10 @@ describe("security matching", () => {
 describe("API service", () => {
   test("query validation", () => {
     const q = (s: string) => m.parsePriceQuery(new URLSearchParams(s));
-    assert.deepEqual(q("symbol=testco"), { symbol: "TESTCO", series: null, range: "1Y" });
+    // Stage 2C added `source` (dev switch, default auto) and `refresh` (default false).
+    assert.deepEqual(q("symbol=testco"), { symbol: "TESTCO", series: null, range: "1Y", source: "auto", refresh: false });
+    assert.equal(q("symbol=TCS&refresh=1").refresh, true);
+    assert.throws(() => q("symbol=TCS&source=yahoo"), (e: { code?: string }) => e.code === "BAD_REQUEST");
     assert.throws(() => q(""), (e: { code?: string }) => e.code === "INVALID_SYMBOL");
     assert.throws(() => q("symbol=DROP%20TABLE"), (e: { code?: string }) => e.code === "INVALID_SYMBOL");
     assert.throws(() => q("symbol=TESTCO&series=EQUITY"), (e: { code?: string }) => e.code === "INVALID_SERIES");

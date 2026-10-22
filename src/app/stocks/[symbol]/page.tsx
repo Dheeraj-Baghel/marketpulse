@@ -11,6 +11,8 @@ import { validatePriceResponse, type ValidatedSeries } from "@/lib/charts/candle
 import { getCompanyBySymbol, normaliseSymbolParam } from "@/lib/directory/queries";
 import { LocalNseHistoricalProvider } from "@/lib/market-data/local-nse-provider";
 import { getPrices } from "@/lib/market-data/price-service";
+import { getMarketDataProviders } from "@/lib/market-data/provider";
+import { preferredSeries } from "@/lib/market-data/series";
 import {
   formatIsoDate,
   formatRupees,
@@ -23,6 +25,9 @@ import {
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+
+/** Max time the server waits to pre-render chart data before handing off to the client. */
+const SEED_WAIT_MS = 2500;
 
 async function load(props: PageProps<"/stocks/[symbol]">) {
   const { symbol: raw } = await props.params;
@@ -47,19 +52,30 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
   // which then shows the explicit no-data state). Never mixes series.
   const provider = new LocalNseHistoricalProvider();
   const coverage = company.listings.map((l) => ({ series: l.series, ...provider.coverage(l.id) }));
-  const chartListing = company.listings.find((l) => coverage.some((c) => c.series === l.series && c.count > 0)) ?? primary;
+  const chosenSeries = preferredSeries(
+    company.listings.map((l) => l.series),
+    coverage.filter((c) => c.count > 0).map((c) => c.series),
+  );
+  const chartListing = company.listings.find((l) => l.series === chosenSeries) ?? primary;
 
-  // Seed the chart from the same service + validator the API uses, so the
-  // first paint needs no extra request. Failure falls back to client fetching.
+  // Seed the chart through the SAME provider-aware service + validator as
+  // /api/prices (NSE Bhavcopy MCP first, local CSV fallback), so there is no
+  // duplicated logic. The wait is bounded: if MCP is slow the page renders
+  // immediately and the chart loads client-side instead.
+  const md = getMarketDataProviders();
   let initialData: ValidatedSeries | null = null;
   if (chartListing) {
-    try {
-      const body = await getPrices({ symbol: chartListing.symbol, series: chartListing.series, range: "MAX" }, { provider });
-      initialData = validatePriceResponse(body, { symbol: chartListing.symbol, series: chartListing.series });
-    } catch {
-      initialData = null;
-    }
+    const seed = getPrices(
+      { symbol: chartListing.symbol, series: chartListing.series, range: "MAX" },
+      { provider, mcpHistory: md.config.mcpEnabled ? md.history : null, mcpEnabled: md.config.mcpEnabled },
+    )
+      .then((body) => validatePriceResponse(body, { symbol: chartListing.symbol, series: chartListing.series }))
+      .catch(() => null);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    initialData = await Promise.race([seed, new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), SEED_WAIT_MS)))]);
+    clearTimeout(timer);
   }
+  const quotes = { enabled: md.config.mcpEnabled, autoRefreshMs: md.config.quoteAutoRefreshMs };
 
   return (
     <AppShell active={null}>
@@ -107,7 +123,7 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
 
         {chartListing ? (
           <section aria-label="Historical price chart" className="mt-5 overflow-hidden rounded-lg border border-line">
-            <CompanyChart securityId={chartListing.id} symbol={chartListing.symbol} series={chartListing.series} name={company.name} initialData={initialData} />
+            <CompanyChart securityId={chartListing.id} symbol={chartListing.symbol} series={chartListing.series} name={company.name} initialData={initialData} quotes={quotes} />
           </section>
         ) : null}
 
@@ -145,7 +161,7 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
           <div className="flex flex-col gap-4">
             <Card aria-labelledby="price-data-heading">
               <CardHeader>
-                <CardTitle id="price-data-heading">Imported price data</CardTitle>
+                <CardTitle id="price-data-heading">Local CSV import (fallback)</CardTitle>
               </CardHeader>
               <ul data-testid="price-data-status" className="divide-y divide-line/70 text-[13px]">
                 {coverage.map((c) => (

@@ -1,0 +1,36 @@
+{
+  "tool": "cm_get_stock_quote",
+  "args": {
+    "symbol": "HDFCBANK"
+  },
+  "at": "2026-10-22T15:57:00.903Z",
+  "ms": 159,
+  "isError": false,
+  "contentTypes": [
+    "text"
+  ],
+  "structuredContent": false,
+  "payloadShape": {
+    "updatedAt": "2026-10-22T15:56:32.940326952Z",
+    "stock": {
+      "type": "CM",
+      "symbol": "HDFCBANK",
+      "series": "EQ",
+      "openPrice": "<number>",
+      "highPrice": "<number>",
+      "lowPrice": "<number>",
+      "preClosePrice": "<number>",
+      "lastTradedPrice": "<number>",
+      "indicativeClosePrice": "<number>",
+      "change": "<number>",
+      "perChange": "<number>",
+      "volume": "<number>",
+      "value": "<number>",
+      "fiftyTwoWeekHigh": "<number>",
+      "fiftyTwoWeekLow": "<number>",
+      "perChange30d": "<number>",
+      "latestTimestamp": "2026-10-22 16:00:28"
+    }
+  },
+  "error": null
+}

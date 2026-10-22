@@ -1,0 +1,26 @@
+{
+  "tool": "cm_get_data_status",
+  "args": {},
+  "at": "2026-10-22T15:56:52.696Z",
+  "ms": 143,
+  "isError": false,
+  "contentTypes": [
+    "text"
+  ],
+  "structuredContent": false,
+  "payloadShape": {
+    "indices": {
+      "gainers": {
+        "available": true,
+        "lastCrawled": "2026-10-22T15:56:22.113761994Z"
+      },
+      "loosers": {
+        "available": true,
+        "lastCrawled": "2026-10-22T15:56:22.668149358Z"
+      }
+    },
+    "crawlIntervalMinutes": "<number>",
+    "redisTtlMinutes": "<number>"
+  },
+  "error": null
+}

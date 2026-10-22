@@ -1,0 +1,71 @@
+{
+  "tool": "get_stock_history",
+  "args": {
+    "symbol": "TCS",
+    "months": 1,
+    "endDate": "2021-12-31"
+  },
+  "at": "2026-10-22T16:00:48.599Z",
+  "ms": 87,
+  "isError": false,
+  "contentTypes": [
+    "text"
+  ],
+  "structuredContent": false,
+  "payloadShape": {
+    "symbol": "TCS",
+    "from_date": "2021-11-30",
+    "to_date": "2021-12-31",
+    "trading_days": "<number>",
+    "source": "in-memory-cache",
+    "query_ms": "<number>",
+    "summary": {
+      "period_high": "<number>",
+      "period_low": "<number>",
+      "return_pct": "<number>",
+      "first_close": "<number>",
+      "last_close": "<number>",
+      "avg_daily_vol": "<number>"
+    },
+    "data": [
+      {
+        "symbol": "TCS",
+        "series": "EQ",
+        "ltp": "<number>",
+        "open": "<number>",
+        "high": "<number>",
+        "low": "<number>",
+        "close": "<number>",
+        "prevClose": "<number>",
+        "volume": "<number>",
+        "totalTradedValue": "<number>",
+        "ch52WeekHigh": "<number>",
+        "ch52WeekLow": "<number>",
+        "mktType": "N",
+        "deliveryQty": "<number>",
+        "date": "2021-11-30"
+      },
+      {
+        "symbol": "TCS",
+        "series": "EQ",
+        "ltp": "<number>",
+        "open": "<number>",
+        "high": "<number>",
+        "low": "<number>",
+        "close": "<number>",
+        "prevClose": "<number>",
+        "volume": "<number>",
+        "totalTradedValue": "<number>",
+        "ch52WeekHigh": "<number>",
+        "ch52WeekLow": "<number>",
+        "mktType": "N",
+        "deliveryQty": "<number>",
+        "date": "2021-12-01"
+      },
+      "<22 more rows omitted>"
+    ],
+    "chunk_months": "<number>",
+    "next_end_date": "2021-11-29"
+  },
+  "error": null
+}

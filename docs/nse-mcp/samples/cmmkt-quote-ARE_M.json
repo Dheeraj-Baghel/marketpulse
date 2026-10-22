@@ -1,0 +1,36 @@
+{
+  "tool": "cm_get_stock_quote",
+  "args": {
+    "symbol": "ARE&M"
+  },
+  "at": "2026-10-22T16:01:02.179Z",
+  "ms": 145,
+  "isError": false,
+  "contentTypes": [
+    "text"
+  ],
+  "structuredContent": false,
+  "payloadShape": {
+    "updatedAt": "2026-10-22T16:00:32.514199636Z",
+    "stock": {
+      "type": "CM",
+      "symbol": "ARE&M",
+      "series": "EQ",
+      "openPrice": "<number>",
+      "highPrice": "<number>",
+      "lowPrice": "<number>",
+      "preClosePrice": "<number>",
+      "lastTradedPrice": "<number>",
+      "indicativeClosePrice": "<number>",
+      "change": "<number>",
+      "perChange": "<number>",
+      "volume": "<number>",
+      "value": "<number>",
+      "fiftyTwoWeekHigh": "<number>",
+      "fiftyTwoWeekLow": "<number>",
+      "perChange30d": "<number>",
+      "latestTimestamp": "2026-10-22 16:00:28"
+    }
+  },
+  "error": null
+}

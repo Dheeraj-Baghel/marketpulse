@@ -16,12 +16,14 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "import:nse": "tsx scripts/import-nse.ts",
     "import:prices": "tsx scripts/import-prices.ts",
-    "test": "tsx --test tests/unit/*.test.ts",
+    "test": "tsx --conditions=react-server --test tests/unit/*.test.ts",
     "test:e2e": "tsx tests/e2e/browser.mts",
     "check": "npm run lint && npm run typecheck && npm test && npm run test:integration",
-    "test:integration": "tsx --test tests/integration/*.test.ts"
+    "test:integration": "tsx --conditions=react-server --test tests/integration/*.test.ts",
+    "probe:nse-mcp": "tsx scripts/mcp-probe/discover.mts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "better-sqlite3": "^13.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -32,7 +34,8 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "server-only": "^0.0.1",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

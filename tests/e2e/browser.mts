@@ -18,6 +18,8 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { chromium, type Page } from "playwright";
 import { runChartChecks } from "./chart-checks.mjs";
+import { startMcpDouble } from "./mcp-double.mjs";
+import { runMcpChecks } from "./mcp-checks.mjs";
 
 const ROOT = process.cwd();
 const PORT = Number(process.env.E2E_PORT ?? 4329);
@@ -27,7 +29,34 @@ const SHOTS = path.join(ROOT, "artifacts/screenshots");
 const dbDir = fs.mkdtempSync(path.join(os.tmpdir(), "marketpulse-e2e-"));
 const DB = path.join(dbDir, "e2e.sqlite");
 // Separate build dir so this run can coexist with a developer's `npm run dev`.
-const env = { ...process.env, MARKETPULSE_DB_PATH: DB, MARKETPULSE_DIST_DIR: ".next-e2e", NEXT_TELEMETRY_DISABLED: "1" };
+// Stages 1-2B run with NSE MCP DISABLED: they verify the local CSV path exactly
+// as before, and automated runs never contact NSE.
+const env = {
+  ...process.env,
+  MARKETPULSE_DB_PATH: DB,
+  MARKETPULSE_DIST_DIR: ".next-e2e",
+  NEXT_TELEMETRY_DISABLED: "1",
+  ENABLE_NSE_MCP: "false",
+};
+// Stage 2C runs a second dev server against a LOCAL synthetic MCP double
+// (tests/e2e/mcp-double.mts) via the test-only loopback allowance.
+const MCP_PORT = Number(process.env.E2E_MCP_DOUBLE_PORT ?? 4392);
+const MCP_APP_PORT = Number(process.env.E2E_MCP_APP_PORT ?? 4330);
+const MCP_BASE = `http://127.0.0.1:${MCP_APP_PORT}`;
+const mcpEnv = {
+  ...env,
+  MARKETPULSE_DIST_DIR: ".next-e2e-mcp",
+  ENABLE_NSE_MCP: "true",
+  MARKET_DATA_SOURCE: "nse-mcp",
+  MARKETPULSE_ALLOW_LOOPBACK_MCP: "1",
+  NSE_BHAVCOPY_MCP_URL: `http://127.0.0.1:${MCP_PORT}/bhavcopy`,
+  NSE_CM_MARKET_MCP_URL: `http://127.0.0.1:${MCP_PORT}/cmmkt`,
+  NSE_MCP_TIMEOUT_MS: "4000",
+  NSE_MCP_BREAKER_COOLDOWN_MS: "0",
+  NSE_MCP_MIN_INTERVAL_MS: "0",
+  NSE_QUOTE_CACHE_TTL_SECONDS: "15",
+  NSE_QUOTE_AUTO_REFRESH_SECONDS: "0",
+};
 
 for (const f of ["EQUITY_L.csv", "SME_EQUITY_L.csv"]) {
   if (!fs.existsSync(path.join(ROOT, "data/nse", f))) {
@@ -83,17 +112,17 @@ function dbCounts() {
   return r;
 }
 
-async function waitForServer() {
+async function waitForServer(base = BASE, log = () => serverLog) {
   for (let i = 0; i < 120; i++) {
     try {
-      const res = await fetch(`${BASE}/`);
+      const res = await fetch(`${base}/`);
       if (res.ok) return;
     } catch {
       /* not up yet */
     }
     await new Promise((r) => setTimeout(r, 500));
   }
-  throw new Error(`dev server did not start:\n${serverLog.split("\n").slice(-15).join("\n")}`);
+  throw new Error(`dev server did not start:\n${log().split("\n").slice(-15).join("\n")}`);
 }
 
 async function rowSymbols(page: Page) {
@@ -111,6 +140,9 @@ const server = spawn("npx", ["next", "dev", "-p", String(PORT)], { cwd: ROOT, en
 let serverLog = "";
 server.stdout.on("data", (d) => (serverLog += d));
 server.stderr.on("data", (d) => (serverLog += d));
+let mcpServer: ReturnType<typeof spawn> | null = null;
+let mcpServerLog = "";
+let mcpDouble: Awaited<ReturnType<typeof startMcpDouble>> | null = null;
 
 try {
   await waitForServer();
@@ -355,6 +387,15 @@ try {
     results.push({ name: "13+. Stage 2B chart checks", ok: false, detail: "real RELIANCE/TCS CSVs not present in data/prices; chart checks need authentic data" });
   }
 
+  // ---------------------------------------------------------------- Stage 2C
+  // Same database (real directory + real CSV imports), MCP enabled, pointed at the synthetic double.
+  mcpDouble = await startMcpDouble(MCP_PORT);
+  mcpServer = spawn("npx", ["next", "dev", "-p", String(MCP_APP_PORT)], { cwd: ROOT, env: mcpEnv, stdio: ["ignore", "pipe", "pipe"] });
+  mcpServer.stdout?.on("data", (d) => (mcpServerLog += d));
+  mcpServer.stderr?.on("data", (d) => (mcpServerLog += d));
+  await waitForServer(MCP_BASE, () => mcpServerLog);
+  await runMcpChecks({ browser, base: MCP_BASE, doubleBase: `http://127.0.0.1:${MCP_PORT}`, shots: SHOTS, check, consoleErrors, hasCsv: Boolean(relianceCsv && tcsCsv) });
+
   await check("No browser console errors during the run", async () => {
     assert(consoleErrors.length === 0, consoleErrors.join(" | "));
     return "0 errors";
@@ -363,6 +404,8 @@ try {
   await browser.close();
 } finally {
   server.kill("SIGTERM");
+  mcpServer?.kill("SIGTERM");
+  await mcpDouble?.close();
   fs.writeFileSync(
     path.join(OUT, "results.json"),
     JSON.stringify({ ranAt: new Date().toISOString(), base: BASE, results, consoleErrors }, null, 2),

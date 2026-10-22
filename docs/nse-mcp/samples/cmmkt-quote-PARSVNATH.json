@@ -1,0 +1,36 @@
+{
+  "tool": "cm_get_stock_quote",
+  "args": {
+    "symbol": "PARSVNATH"
+  },
+  "at": "2026-10-22T16:01:00.832Z",
+  "ms": 147,
+  "isError": false,
+  "contentTypes": [
+    "text"
+  ],
+  "structuredContent": false,
+  "payloadShape": {
+    "updatedAt": "2026-10-22T16:00:32.514199636Z",
+    "stock": {
+      "type": "CM",
+      "symbol": "PARSVNATH",
+      "series": "BE",
+      "openPrice": "<number>",
+      "highPrice": "<number>",
+      "lowPrice": "<number>",
+      "preClosePrice": "<number>",
+      "lastTradedPrice": "<number>",
+      "indicativeClosePrice": "<number>",
+      "change": "<number>",
+      "perChange": "<number>",
+      "volume": "<number>",
+      "value": "<number>",
+      "fiftyTwoWeekHigh": "<number>",
+      "fiftyTwoWeekLow": "<number>",
+      "perChange30d": "<number>",
+      "latestTimestamp": "2026-10-22 16:00:28"
+    }
+  },
+  "error": null
+}

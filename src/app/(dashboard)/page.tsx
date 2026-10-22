@@ -8,6 +8,7 @@ import { ImportStatus } from "@/components/directory/import-status";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { getDirectoryPage, getDirectoryStatus, parseDirectoryQuery } from "@/lib/directory/queries";
+import { readMarketDataConfig } from "@/lib/market-data/provider";
 import { SEGMENT_SHORT } from "@/lib/format";
 
 // Reads the local SQLite directory on every request (it changes after imports).
@@ -19,6 +20,9 @@ export default async function DashboardPage(props: PageProps<"/">) {
   const status = getDirectoryStatus();
   const page = status.state === "empty" ? null : getDirectoryPage(query);
   const selectedParam = typeof params.selected === "string" ? params.selected : null;
+  // Stage 2C: only these two non-secret values reach the browser.
+  const md = readMarketDataConfig();
+  const quotes = { enabled: md.mcpEnabled, autoRefreshMs: md.quoteAutoRefreshMs };
 
   return (
     <AppShell active="dashboard">
@@ -42,7 +46,7 @@ export default async function DashboardPage(props: PageProps<"/">) {
               </div>
             ) : null}
             {page ? (
-              <DirectoryWorkspace page={page} query={query.q} segment={query.segment} initialSelected={selectedParam} />
+              <DirectoryWorkspace page={page} query={query.q} segment={query.segment} initialSelected={selectedParam} quotes={quotes} />
             ) : (
               <EmptyDirectory />
             )}

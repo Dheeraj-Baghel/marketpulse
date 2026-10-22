@@ -34,7 +34,12 @@ export interface SecurityKey {
   series: string;
 }
 
-export const REQUEST_TIMEOUT_MS = 20_000;
+/**
+ * Stage 2C: the first ALL-history load from NSE Bhavcopy MCP chains ~21
+ * three-month chunks server-side (a few seconds normally), so the client
+ * budget is longer than for the local CSV path.
+ */
+export const REQUEST_TIMEOUT_MS = 45_000;
 const CACHE_LIMIT = 24;
 /** Successful results only; errors are never cached. Cleared on page reload. */
 const cache = new Map<string, ValidatedSeries>();
@@ -67,8 +72,9 @@ class HttpError extends Error {
   }
 }
 
-async function fetchHistory(security: SecurityKey, signal: AbortSignal): Promise<ValidatedSeries> {
+async function fetchHistory(security: SecurityKey, signal: AbortSignal, refresh: boolean): Promise<ValidatedSeries> {
   const qs = new URLSearchParams({ symbol: security.symbol, series: security.series, range: "MAX" });
+  if (refresh) qs.set("refresh", "1");
   const response = await fetch(`/api/prices?${qs}`, { signal, cache: "no-store", headers: { Accept: "application/json" } });
   let body: unknown = null;
   try {
@@ -96,6 +102,9 @@ function classify(error: unknown, timedOut: boolean): ChartError {
     }
     if (error.code === "AMBIGUOUS_SERIES") return { kind: "ambiguous", title: "Series is ambiguous", message: error.message, retryable: false };
     if (error.status === 400) return { kind: "bad-request", title: "Invalid price request", message: error.message, retryable: false };
+    if (error.code === "PROVIDER_RATE_LIMITED") return { kind: "api", title: "NSE rate limit reached", message: error.message, retryable: true };
+    if (error.code === "PROVIDER_TIMEOUT") return { kind: "timeout", title: "NSE Bhavcopy did not respond in time", message: error.message, retryable: true };
+    if (error.code?.startsWith("PROVIDER_")) return { kind: "api", title: "NSE market-data provider error", message: error.message, retryable: true };
     if (error.code === "INTERNAL_ERROR" || error.status >= 500) {
       return { kind: "database", title: "Price database unavailable", message: error.message, retryable: true };
     }
@@ -120,14 +129,21 @@ type Stored = { key: string; attempt: number } & (
  */
 export function usePriceHistory(security: SecurityKey | null, initial?: { key: string; data: ValidatedSeries } | null) {
   const key = security ? securityKey(security) : null;
-  const [attempt, setAttempt] = useState(0);
+  /**
+   * Each attempt value is one request. `refreshFor` names the security whose
+   * current attempt is a manual refresh (bypasses client + server cache);
+   * switching to another security never inherits it.
+   */
+  const [req, setReq] = useState<{ attempt: number; refreshFor: string | null }>({ attempt: 0, refreshFor: null });
+  const attempt = req.attempt;
   const [stored, setStored] = useState<Stored | null>(null);
 
+  const refreshing = req.refreshFor !== null && req.refreshFor === key;
   const seeded = initial && key === initial.key ? initial.data : undefined;
 
   useEffect(() => {
     if (!security || !key) return;
-    if (cacheGet(key) || seeded) return;
+    if (!refreshing && (cacheGet(key) || seeded)) return;
     const controller = new AbortController();
     let timedOut = false;
     const timer = window.setTimeout(() => {
@@ -135,7 +151,7 @@ export function usePriceHistory(security: SecurityKey | null, initial?: { key: s
       controller.abort();
     }, REQUEST_TIMEOUT_MS);
 
-    fetchHistory(security, controller.signal)
+    fetchHistory(security, controller.signal, refreshing)
       .then((data) => {
         cacheSet(key, data);
         if (!controller.signal.aborted) {
@@ -156,15 +172,26 @@ export function usePriceHistory(security: SecurityKey | null, initial?: { key: s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, attempt]);
 
-  const retry = useCallback(() => setAttempt((a) => a + 1), []);
+  const retry = useCallback(() => setReq((r) => ({ attempt: r.attempt + 1, refreshFor: null })), []);
+  /** Manual refresh: re-request from the source (server cache bypassed) while keeping the current chart visible. */
+  const refresh = useCallback(() => setReq((r) => ({ attempt: r.attempt + 1, refreshFor: key })), [key]);
 
   let view: PriceHistoryView;
+  const done = stored && stored.key === key && stored.attempt === attempt ? stored : null;
   const hit = key ? (cacheGet(key) ?? seeded) : undefined;
+  let refreshError: ChartError | null = null;
   if (!key) view = { status: "idle", key: null, data: null, error: null };
-  else if (hit) view = { status: hit.candles.length > 0 ? "ready" : "empty", key, data: hit, error: null };
-  else if (stored && stored.key === key && stored.attempt === attempt) {
-    view = stored.status === "error" ? { status: "error", key, data: null, error: stored.error } : { status: stored.status, key, data: stored.data, error: null };
+  else if (done && done.status === "error" && refreshing && hit) {
+    // A failed manual refresh keeps this security's existing chart and reports the error inline.
+    view = { status: hit.candles.length > 0 ? "ready" : "empty", key, data: hit, error: null };
+    refreshError = done.error;
+  } else if (done) {
+    view = done.status === "error" ? { status: "error", key, data: null, error: done.error } : { status: done.status, key, data: done.data, error: null };
+  } else if (hit) {
+    // Includes a manual refresh in flight: keep showing this security's own last data.
+    view = { status: hit.candles.length > 0 ? "ready" : "empty", key, data: hit, error: null };
   } else view = { status: "loading", key, data: null, error: null };
 
-  return { view, retry };
+  const isRefreshing = Boolean(key) && refreshing && !done;
+  return { view, retry, refresh, isRefreshing, refreshError };
 }

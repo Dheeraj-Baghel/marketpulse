@@ -1,0 +1,20 @@
+{
+  "tool": "get_stock_history",
+  "args": {
+    "symbol": "RAVITA",
+    "months": 1,
+    "endDate": "today"
+  },
+  "at": "2026-10-22T15:56:50.682Z",
+  "ms": 56,
+  "isError": false,
+  "contentTypes": [
+    "text"
+  ],
+  "structuredContent": false,
+  "payloadShape": {
+    "hint": "Use search_symbols tool to find valid symbols",
+    "error": "Symbol not found: RAVITA"
+  },
+  "error": null
+}

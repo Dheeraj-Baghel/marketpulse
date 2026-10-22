@@ -1,4 +1,4 @@
-# MarketPulse — NSE directory, historical prices and charts (Stages 1, 2A, 2B)
+# MarketPulse — NSE directory, historical prices, charts and NSE MCP data (Stages 1–2C)
 
 A personal NSE stock research workspace:
 
@@ -8,14 +8,27 @@ A personal NSE stock research workspace:
   downloaded NSE security-wise CSVs, served by `GET /api/prices`.
 - **Stage 2B** — interactive candlestick/line charts with volume, built on
   TradingView Lightweight Charts **5.2.1**, on the dashboard and company pages.
+- **Stage 2C** — automatic data from NSE's **official MCP servers**:
+  - daily EOD history from **NSE Bhavcopy** (about 5 years);
+  - a separate **delayed quote** from **NSE CM Market** (NSE: about 1–3 minutes
+    behind real time).
+
+  Both are fetched on demand and held only transiently in memory. The local CSV
+  data stays as the fallback.
 
 News, annual reports and AI insights are **not implemented**; they remain
-clearly labelled, non-interactive placeholders. There is no live or delayed
-price feed: every price shown is a stored historical end-of-day value.
+clearly labelled, non-interactive placeholders. Nothing is labelled live:
+
+- history is **Historical EOD — NSE Bhavcopy** (or **Local CSV — Historical EOD**);
+- the quote is **NSE CM Market — Delayed Quote**, stamped with NSE's own
+  exchange time.
+
+For private, informational, non-commercial use only. See [NSE MCP and terms](#nse-mcp-stage-2c).
 
 Stack: Next.js 16 (App Router) · strict TypeScript · Tailwind CSS 4 · shadcn/ui
 component pattern (`components.json`, primitives in `src/components/ui`) ·
-Lucide · SQLite (better-sqlite3) with Drizzle ORM · lightweight-charts 5.2.1.
+Lucide · SQLite (better-sqlite3) with Drizzle ORM · lightweight-charts 5.2.1 ·
+`@modelcontextprotocol/sdk` 1.32.1 (Streamable HTTP client) · zod.
 
 ## Run locally
 
@@ -189,6 +202,113 @@ Charts currently work for the two imported securities:
 - **ALL** therefore equals about 1Y. No longer history is claimed.
 - Every other security shows the no-data state until its CSV is imported.
 
+(With Stage 2C enabled, charts are available for any security NSE Bhavcopy
+serves; the list above is the **local CSV** coverage used when MCP is disabled
+or unavailable.)
+
+## NSE MCP (Stage 2C)
+
+Connectivity, discovered tools, real response shapes and the cross-check
+against the CSV import are documented in
+[docs/nse-mcp/FINDINGS.md](docs/nse-mcp/FINDINGS.md). To re-run discovery
+(listTools only, no data calls): `npm run probe:nse-mcp`.
+
+**Tools used** (exact names discovered via `listTools`):
+
+- `get_stock_history` on `https://mcp.nseindia.in/bhavcopy/cm/mcp`
+- `cm_get_stock_quote` on `https://mcp.nseindia.in/cmmkt/mcp`
+
+The client
+([nse-mcp-client.ts](src/lib/market-data/nse-mcp-client.ts)) runs **only on
+the server** (`server-only`); the browser only calls `/api/*`. It:
+
+- uses the official SDK's Streamable HTTP transport and verifies tools at connect;
+- reuses one connection per server, reconnecting lazily;
+- applies per-call timeouts and 150 ms polite pacing per server;
+- trips a circuit breaker after 3 consecutive failures;
+- validates every payload ([normalize.ts](src/lib/market-data/normalize.ts));
+- exposes health at `GET /api/market-data/status`, which makes no upstream calls.
+
+**Source priority** ([provider.ts](src/lib/market-data/provider.ts)):
+
+| Data | 1st | 2nd | 3rd |
+| --- | --- | --- | --- |
+| Daily candles (`/api/prices`) | NSE Bhavcopy — Historical EOD | Local CSV — Historical EOD (`isStale` + `fallbackReason` when MCP failed) | Unavailable |
+| Quote (`/api/quotes`) | NSE CM Market — Delayed Quote | Cached — Stale (last good quote, **original** exchange timestamp, ≤ 6 h) | Unavailable |
+
+Every response states its `sourceId`/`sourceLabel`; categories never switch
+silently. A quote is never turned into, or appended as, a candle.
+
+**APIs:**
+
+- `GET /api/prices` keeps its 2A contract and adds `sourceId`, `sourceLabel`,
+  `isStale`, `fallbackReason`, `provider` (`fetchedAt`, `cached`, `complete`,
+  excluded other-series rows) and `refresh=1`.
+- `GET /api/quotes?symbol=&series=[&refresh=1]` returns
+  `{dataMode: "DELAYED_QUOTE", sourceLabel, quote{lastPrice, previousClose, change, changePct, changeComputed, open, high, low, volume, exchangeTimestamp}, fetchedAt, cached, marketSession, delayNote, attribution}`.
+- New error codes: `NO_HISTORICAL_DATA`, `UNSUPPORTED_SERIES`,
+  `PROVIDER_TIMEOUT` (504), `PROVIDER_RATE_LIMITED` (429),
+  `PROVIDER_INVALID_RESPONSE` / `PROVIDER_TOOL_MISSING` /
+  `PROVIDER_UNAVAILABLE` (502), `PROVIDER_DISABLED` (503).
+- Symbols are validated against the directory **before** any MCP call.
+- In development only, `source=auto|nse-mcp|local-csv` forces a source.
+
+**Refresh and caching** (all transient, in memory, never written to SQLite):
+
+- **History:**
+  - Fetched for the selected security only, newest 3-month chunk first, just
+    far enough for the requested range.
+  - 1Y takes about 4–5 calls; ALL takes about 21 calls once, about 2–4 s live.
+  - Cached for 30 minutes per security, with concurrent identical requests
+    merged.
+  - Bhavcopy changes once per trading day (the previous session's final
+    data), so this fetches nothing new intraday.
+  - Cached data is reused within its TTL even if NSE goes down. "Refresh
+    historical data" bypasses the cache; if NSE is then unreachable the chart
+    switches, labelled, to the local CSV.
+- **Quote:**
+  - One call when a stock is selected, cached 60 s server-side with
+    concurrent identical requests merged.
+  - The manual refresh button bypasses the cache.
+  - Background refresh runs every 120 s, only for the selected stock, only
+    while the IST clock says the market is open or in pre-open, and only
+    while the tab is visible. Nothing is polled across the directory.
+  - After the close, at weekends and on holidays the quote shows NSE's last
+    exchange timestamp with "market closed". NSE holidays are not modelled;
+    the timestamp is the truth.
+- **Disabling all external fetching:** set `ENABLE_NSE_MCP=false` or
+  `MARKET_DATA_SOURCE=local-csv` (see [.env.example](.env.example)). Only the
+  two exact official URLs are accepted; any other configured URL disables MCP.
+
+**Correctness rules applied to MCP data:**
+
+- **Identity:** the symbol and series must match the request. NSE reports
+  some symbols only in their current series (e.g. HAMPTON → EQ) and returns
+  T+0 (`T0`) rows on some days. Those rows are excluded and counted, never
+  relabelled.
+- **Validation:**
+  - Prices are converted exactly to 1/10,000-rupee integers.
+  - OHLC values must be within the day's high–low range.
+  - Dates are real sessions, never in the future; duplicates are removed and
+    conflicting rows rejected.
+  - Missing volume is left as null.
+  - No candles are created or interpolated.
+- **Unadjusted prices:** the history is raw bhavcopy, the same as the CSV.
+  The chart flags close-to-close moves of 35% or more as possible corporate
+  actions (e.g. RELIANCE's 1:1 bonus, ex-date 28 Oct 2024) without altering
+  any price.
+
+**Terms:**
+
+- NSE states MCP data is for informational use, not commercial use, real-time
+  trading or AI training/fine-tuning.
+- MarketPulse does not redistribute data or provide trading functionality, and
+  attributes NSE.
+- It keeps MCP data out of persistent storage because retention rights are not
+  established.
+- Committed probe samples in `docs/nse-mcp/samples/` are redacted to shapes
+  only.
+
 ## Features (Stage 1)
 
 - Sidebar (MarketPulse brand, Dashboard), header with title, debounced search
@@ -223,8 +343,8 @@ npm run test:e2e          # Chromium acceptance run (needs data/nse/*.csv; chart
 ```
 
 `test:e2e` starts an isolated `next dev` on port 4329 (separate build folder,
-throwaway database, so it can run alongside `npm run dev`). It runs 26 checks
-plus a zero-console-error check:
+throwaway database, so it can run alongside `npm run dev`). It runs 34 checks
+plus a zero-console-error check, and **never contacts NSE**:
 
 - Stage 1 directory behaviour.
 - Stage 2A import/API.
@@ -232,6 +352,25 @@ plus a zero-console-error check:
   crosshair values; TCS replacing RELIANCE; line toggle; ranges; zoom/pan/reset;
   full screen; delayed-response race; injected 500 + retry; chart-instance
   cleanup; details page; 1440/1280/820/390 px layouts.
+- Stages 1–2B run with MCP disabled.
+- Stage 2C (checks 27–34) starts a second app server pointed at a **local
+  synthetic MCP double**, [mcp-double.mts](tests/e2e/mcp-double.mts). The
+  double is a real MCP server built with the official SDK, using NSE's tool
+  names and payload shapes with invented prices. The checks cover:
+  - history and quote rendering and labels;
+  - caches and refresh;
+  - races with delayed responses;
+  - outage → labelled CSV fallback and stale quote;
+  - malformed payloads;
+  - unsupported securities;
+  - the details page and 390 px layout.
+
+Unit tests run with `--conditions=react-server` so server-only modules load
+outside Next.
+
+Real NSE calls are limited to the manual probes in `scripts/mcp-probe/` and
+[tests/e2e/probe-2c.mts](tests/e2e/probe-2c.mts), which run against the
+running app.
 
 Synthetic fixtures exist only inside explicitly labelled unit tests. It writes
 `artifacts/testing/results.json` and screenshots to `artifacts/screenshots/`.
@@ -253,10 +392,24 @@ Synthetic fixtures exist only inside explicitly labelled unit tests. It writes
   but non-ASCII names would match case-sensitively.
 - Tested in Chromium (desktop, 820 px tablet, 390 px mobile emulation) only.
   Safari/Firefox, real touch devices and screen readers have not been checked.
-- Prices are **unadjusted**: splits/bonuses would appear as price jumps.
-- Only ~1 year (246 sessions) is imported for RELIANCE/TCS; longer ranges need
-  additional NSE downloads. Several files can be imported for one symbol, and
-  overlapping dates are de-duplicated.
+- Prices are **unadjusted**: splits/bonuses appear as price jumps. The chart
+  flags them but does not adjust them.
+- Local CSV: only about 1 year (246 sessions) is imported for RELIANCE/TCS.
+  With MCP, NSE serves about 5 years (e.g. RELIANCE 13 Aug 2021 – 21 Oct 2026,
+  1,264 sessions).
+- MCP history lacks a few genuine EQ sessions:
+  - On 2025-11-21 and 2026-04-23 NSE returned only `T0` rows for RELIANCE;
+    these are excluded and noted in the footer.
+  - The Sunday 1 Feb 2026 budget session is absent from Bhavcopy MCP, although
+    the CSV has it.
+- MCP data is not persisted, so the first ALL load after a server restart
+  re-fetches about 21 chunks.
+- Market-session detection is clock-based (09:15–15:30 IST, Mon–Fri) and does
+  not know NSE holidays. It only gates background refresh; the displayed
+  timestamp always comes from NSE.
+- NSE does not publish numeric rate limits. MarketPulse paces calls and backs
+  off, but heavy use could still be throttled; that surfaces as
+  `PROVIDER_RATE_LIMITED`.
 - Chart canvas content is not readable by screen readers beyond its summary
   `aria-label` and the textual OHLC readout.
 - The Lightweight Charts attribution logo is kept, as the library's licence

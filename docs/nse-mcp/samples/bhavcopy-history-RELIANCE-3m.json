@@ -1,0 +1,71 @@
+{
+  "tool": "get_stock_history",
+  "args": {
+    "symbol": "RELIANCE",
+    "months": 3,
+    "endDate": "today"
+  },
+  "at": "2026-10-22T16:00:44.884Z",
+  "ms": 220,
+  "isError": false,
+  "contentTypes": [
+    "text"
+  ],
+  "structuredContent": false,
+  "payloadShape": {
+    "symbol": "RELIANCE",
+    "from_date": "2026-07-22",
+    "to_date": "2026-10-21",
+    "trading_days": "<number>",
+    "source": "in-memory-cache",
+    "query_ms": "<number>",
+    "summary": {
+      "period_high": "<number>",
+      "period_low": "<number>",
+      "return_pct": "<number>",
+      "first_close": "<number>",
+      "last_close": "<number>",
+      "avg_daily_vol": "<number>"
+    },
+    "data": [
+      {
+        "symbol": "RELIANCE",
+        "series": "EQ",
+        "ltp": "<number>",
+        "open": "<number>",
+        "high": "<number>",
+        "low": "<number>",
+        "close": "<number>",
+        "prevClose": "<number>",
+        "volume": "<number>",
+        "totalTradedValue": "<number>",
+        "ch52WeekHigh": "<number>",
+        "ch52WeekLow": "<number>",
+        "mktType": "N",
+        "deliveryQty": "<number>",
+        "date": "2026-07-22"
+      },
+      {
+        "symbol": "RELIANCE",
+        "series": "EQ",
+        "ltp": "<number>",
+        "open": "<number>",
+        "high": "<number>",
+        "low": "<number>",
+        "close": "<number>",
+        "prevClose": "<number>",
+        "volume": "<number>",
+        "totalTradedValue": "<number>",
+        "ch52WeekHigh": "<number>",
+        "ch52WeekLow": "<number>",
+        "mktType": "N",
+        "deliveryQty": "<number>",
+        "date": "2026-07-23"
+      },
+      "<61 more rows omitted>"
+    ],
+    "chunk_months": "<number>",
+    "next_end_date": "2026-07-21"
+  },
+  "error": null
+}

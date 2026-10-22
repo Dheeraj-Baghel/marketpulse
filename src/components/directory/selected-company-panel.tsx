@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import type { ChartMode, ChartRange } from "@/lib/charts/candles";
 import type { DirectoryRow } from "@/lib/directory/queries";
+import { preferredSeries } from "@/lib/market-data/series";
 import { formatIsoDate, INSTRUMENT_LABEL, SEGMENT_LABEL, SERIES_LABEL, stockHref } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,7 @@ interface Props {
   onRangeChange: (r: ChartRange) => void;
   mode: ChartMode;
   onModeChange: (m: ChartMode) => void;
+  quotes: { enabled: boolean; autoRefreshMs: number };
 }
 
 /**
@@ -24,7 +26,7 @@ interface Props {
  * the explicit no-data state). Never mixes series.
  */
 export function chartSeriesFor(row: DirectoryRow): string {
-  return row.priceHistory[0]?.series ?? row.series[0] ?? "EQ";
+  return preferredSeries(row.series, row.priceHistory.map((h) => h.series)) ?? "EQ";
 }
 
 /**
@@ -32,7 +34,7 @@ export function chartSeriesFor(row: DirectoryRow): string {
  * historical EOD chart (Stage 2B). Company metadata stays visible whatever
  * the chart's loading/error state.
  */
-export function SelectedCompanyPanel({ row, range, onRangeChange, mode, onModeChange }: Props) {
+export function SelectedCompanyPanel({ row, range, onRangeChange, mode, onModeChange, quotes }: Props) {
   return (
     <section aria-labelledby="selected-heading" className="flex min-h-[34rem] flex-col overflow-hidden rounded-lg border border-line bg-panel">
       {row ? (
@@ -76,6 +78,7 @@ export function SelectedCompanyPanel({ row, range, onRangeChange, mode, onModeCh
           mode={mode}
           onModeChange={onModeChange}
           variant="preview"
+          quotes={quotes}
           className="flex-1"
         />
       ) : null}

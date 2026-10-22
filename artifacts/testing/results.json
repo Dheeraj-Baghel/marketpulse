@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-10-22T15:47:37.841Z",
+  "ranAt": "2026-10-22T17:09:52.662Z",
   "base": "http://127.0.0.1:4329",
   "results": [
     {
@@ -131,6 +131,46 @@
       "name": "26. Responsive: 1440 / 1280 / 820 / 390 without overflow or clipped axis",
       "ok": true,
       "detail": "1440px ok (canvas 650x449, side by side); 1280px ok (canvas 554x315, side by side); 820px ok (canvas 728x286, stacked); 390px ok (canvas 322x286, stacked)"
+    },
+    {
+      "name": "27. 2C: MCP history renders through the Stage 2B chart, labelled NSE Bhavcopy",
+      "ok": true,
+      "detail": "300 synthetic MCP candles 2025-08-28..2026-10-21 plotted exactly; badge \"Source: NSE Bhavcopy — Historical EOD · Unadjusted\""
+    },
+    {
+      "name": "28. 2C: delayed quote shown separately with source + exchange timestamp",
+      "ok": true,
+      "detail": "quote ₹903.50 @ 2026-10-22T15:29:58+05:30 shown in its own block; no intraday candle appended"
+    },
+    {
+      "name": "29. 2C: repeated requests use the server caches; refresh bypasses them",
+      "ok": true,
+      "detail": "cached reads made 0 upstream calls; manual quote refresh made exactly 1; caches are transient"
+    },
+    {
+      "name": "30. 2C: rapid switching never shows another security's history or quote",
+      "ok": true,
+      "detail": "TCS history+quote delayed 2.5 s and superseded by RELIANCE: late TCS responses never replaced RELIANCE; switching back showed TCS's own data"
+    },
+    {
+      "name": "31. 2C: MCP outage falls back to local CSV (labelled) and quote shows stale/unavailable",
+      "ok": true,
+      "detail": "cached Bhavcopy shown first (labelled cached); manual refresh during outage -> Local CSV fallback (isStale, reason UNAVAILABLE); quote 'Cached — Stale' kept original timestamp; INFY unavailable"
+    },
+    {
+      "name": "32. 2C: malformed MCP responses are rejected, never rendered",
+      "ok": true,
+      "detail": "malformed history -> 502 PROVIDER_INVALID_RESPONSE; malformed quote -> 502; non-directory symbol -> 404 before any MCP call"
+    },
+    {
+      "name": "33. 2C: unsupported security shows explicit unavailable states",
+      "ok": true,
+      "detail": "INFY (not in the synthetic double): chart empty state with NSE reason; quote 'unavailable'; no prices shown"
+    },
+    {
+      "name": "34. 2C: details page uses the same provider layer; mobile layout",
+      "ok": true,
+      "detail": "details page: MCP source + quote + placeholders; 390px: no overflow or clipped quote/source labels"
     },
     {
       "name": "No browser console errors during the run",

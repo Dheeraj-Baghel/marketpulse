@@ -31,6 +31,18 @@ export interface PriceSeriesMeta {
   name: string;
   isin: string;
   source: string;
+  /** Stage 2C provenance. Older responses without it are treated as local CSV. */
+  sourceId: "nse-bhavcopy-mcp" | "local-csv" | "unavailable";
+  sourceLabel: string;
+  isStale: boolean;
+  fallbackReason: { code: string; message: string } | null;
+  provider: {
+    fetchedAt: string;
+    cached: boolean;
+    complete: boolean;
+    excludedOtherSeriesRows: number;
+    otherSeries: string[];
+  } | null;
   dataMode: "HISTORICAL_EOD";
   adjustmentStatus: "UNADJUSTED";
   currency: "INR";
@@ -120,6 +132,9 @@ export function validatePriceResponse(body: unknown, expected: { symbol: string;
     });
   });
 
+  const sourceId = b.sourceId === "nse-bhavcopy-mcp" || b.sourceId === "unavailable" ? b.sourceId : "local-csv";
+  const fr = b.fallbackReason as { code?: unknown; message?: unknown } | null | undefined;
+  const pv = b.provider as Record<string, unknown> | null | undefined;
   return {
     meta: {
       symbol: expected.symbol,
@@ -127,6 +142,20 @@ export function validatePriceResponse(body: unknown, expected: { symbol: string;
       name: typeof b.name === "string" ? b.name : expected.symbol,
       isin: typeof b.isin === "string" ? b.isin : "",
       source: typeof b.source === "string" ? b.source : "Unknown source",
+      sourceId,
+      sourceLabel: typeof b.sourceLabel === "string" ? b.sourceLabel : sourceId === "nse-bhavcopy-mcp" ? "NSE Bhavcopy — Historical EOD" : "Local CSV — Historical EOD",
+      isStale: b.isStale === true,
+      fallbackReason: fr && typeof fr.code === "string" && typeof fr.message === "string" ? { code: fr.code, message: fr.message } : null,
+      provider:
+        pv && typeof pv.fetchedAt === "string"
+          ? {
+              fetchedAt: pv.fetchedAt,
+              cached: pv.cached === true,
+              complete: pv.complete === true,
+              excludedOtherSeriesRows: typeof pv.excludedOtherSeriesRows === "number" ? pv.excludedOtherSeriesRows : 0,
+              otherSeries: Array.isArray(pv.otherSeries) ? pv.otherSeries.filter((s): s is string => typeof s === "string") : [],
+            }
+          : null,
       dataMode: "HISTORICAL_EOD",
       adjustmentStatus: "UNADJUSTED",
       currency: "INR",
@@ -206,6 +235,23 @@ export function previousSessionChange(candles: ChartCandle[]): { previousDate: s
   // Work in paise-of-paise integers (x10^4) to avoid float drift in the difference.
   const absScaled = Math.round(last.close * 10_000) - Math.round(prev.close * 10_000);
   return { previousDate: prev.time, previousClose: prev.close, abs: absScaled / 10_000, pct: (absScaled / Math.round(prev.close * 10_000)) * 100 };
+}
+
+/**
+ * Session-to-session close moves larger than `threshold` (default 35%). In
+ * UNADJUSTED data these are usually corporate actions (splits/bonus issues,
+ * e.g. RELIANCE 1:1 bonus ex-date 28 Oct 2024), not market moves. The chart
+ * only flags them; prices are never adjusted or altered.
+ */
+export function largeDiscontinuities(candles: ChartCandle[], threshold = 0.35): { from: string; to: string; changePct: number }[] {
+  const out: { from: string; to: string; changePct: number }[] = [];
+  for (let i = 1; i < candles.length; i++) {
+    const a = candles[i - 1]!;
+    const b = candles[i]!;
+    const r = b.close / a.close - 1;
+    if (Math.abs(r) >= threshold) out.push({ from: a.time, to: b.time, changePct: Math.round(r * 1000) / 10 });
+  }
+  return out;
 }
 
 const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2, maximumFractionDigits: 2 });

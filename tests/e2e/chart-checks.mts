@@ -119,7 +119,9 @@ export async function runChartChecks(ctx: Ctx) {
     const expectedPct = (((relLast.close - relPrev.close) / relPrev.close) * 100).toFixed(2);
     assert(changeText.includes(`${expectedPct}%`), `change "${changeText}" lacks ${expectedPct}%`);
     assert(await page.getByTestId("eod-badge").isVisible(), "HISTORICAL EOD badge");
-    assert((await page.getByTestId("source-badge").innerText()).includes("Imported NSE historical data"), "source badge");
+    // Stage 2C relabelled the CSV source; this run has NSE MCP disabled, so it is the local CSV import.
+    assert((await page.getByTestId("source-badge").innerText()).includes("Local CSV — Historical EOD"), "source badge");
+    assert((await page.getByTestId("source-badge").getAttribute("data-source")) === "local-csv", "source id");
     const text = await page.getByTestId("stock-price-chart").innerText();
     assert(!/\blive\b|\bdelayed\b|real-time|current price/i.test(text), `chart claims live/delayed data: ${text}`);
     await page.getByRole("button", { name: "1Y", exact: true }).click();

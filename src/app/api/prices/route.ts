@@ -1,32 +1,30 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getPrices, parsePriceQuery, PriceRequestError } from "@/lib/market-data/price-service";
+import { errorResponse } from "@/lib/market-data/http";
+import { getMarketDataProviders } from "@/lib/market-data/provider";
+import { getPrices, parsePriceQuery } from "@/lib/market-data/price-service";
 
 /**
- * GET /api/prices?symbol=RELIANCE&series=EQ&range=1Y
+ * GET /api/prices?symbol=RELIANCE&series=EQ&range=1Y[&refresh=1][&source=auto|nse-mcp|local-csv (dev only)]
  *
- * Returns ascending daily OHLCV candles imported from NSE security-wise
- * historical CSVs. Unadjusted, end-of-day only. An empty `candles` array means
- * no data has been imported for this (valid) security; it is never filled
- * with another security's or series' data.
+ * Ascending, unadjusted daily OHLCV candles. Stage 2C source priority:
+ * NSE Bhavcopy MCP (transient) -> local CSV import -> explicit empty.
+ * Every response states `sourceId`/`sourceLabel`, `isStale` and, when the
+ * primary source was not used, `fallbackReason`. Never returns another
+ * security's or series' data. Stage 2A/2B fields are unchanged.
  */
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
     const query = parsePriceQuery(request.nextUrl.searchParams);
-    const body = await getPrices(query);
+    const p = getMarketDataProviders();
+    const body = await getPrices(query, {
+      mcpHistory: p.config.mcpEnabled ? p.history : null,
+      mcpEnabled: p.config.mcpEnabled,
+      allowSourceOverride: p.config.allowSourceOverride,
+    });
     return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    if (error instanceof PriceRequestError) {
-      return NextResponse.json(
-        { error: { code: error.code, message: error.message, ...(error.details ?? {}) } },
-        { status: error.status, headers: { "Cache-Control": "no-store" } },
-      );
-    }
-    console.error("GET /api/prices failed", error);
-    return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message: "Price data could not be read from the local database." } },
-      { status: 500, headers: { "Cache-Control": "no-store" } },
-    );
+    return errorResponse(error, "GET /api/prices", "Price data could not be read.");
   }
 }

@@ -1,0 +1,17 @@
+{
+  "tool": "cm_get_stock_quote",
+  "args": {
+    "symbol": "ZZZZNOTREAL"
+  },
+  "at": "2026-10-22T15:57:05.896Z",
+  "ms": 133,
+  "isError": false,
+  "contentTypes": [
+    "text"
+  ],
+  "structuredContent": false,
+  "payloadShape": {
+    "error": "Symbol 'ZZZZNOTREAL' not found"
+  },
+  "error": null
+}

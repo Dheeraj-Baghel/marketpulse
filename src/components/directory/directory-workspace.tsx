@@ -17,13 +17,14 @@ interface Props {
   query: string;
   segment: Filter;
   initialSelected: string | null;
+  quotes: { enabled: boolean; autoRefreshMs: number };
 }
 
 /**
  * Desktop: ~40% directory / ~60% research area. Below lg the two stack, table
  * first; selecting a row on a narrow screen scrolls the preview into view.
  */
-export function DirectoryWorkspace({ page, query, segment, initialSelected }: Props) {
+export function DirectoryWorkspace({ page, query, segment, initialSelected, quotes }: Props) {
   const { isPending, navigate } = useDirectoryNavigation();
   const panelRef = useRef<HTMLDivElement>(null);
   // ISIN is an optional column (always shown in the preview panel and details page).
@@ -121,7 +122,7 @@ export function DirectoryWorkspace({ page, query, segment, initialSelected }: Pr
       </section>
 
       <div ref={panelRef} className="min-w-0 scroll-mt-16 lg:sticky lg:top-[4.5rem] lg:flex lg:h-[calc(100dvh-5.5rem)] lg:min-h-[36rem] lg:flex-col [&>section]:lg:flex-1">
-        <SelectedCompanyPanel row={selectedRow} range={chartRange} onRangeChange={setChartRange} mode={chartMode} onModeChange={setChartMode} />
+        <SelectedCompanyPanel row={selectedRow} range={chartRange} onRangeChange={setChartRange} mode={chartMode} onModeChange={setChartMode} quotes={quotes} />
       </div>
     </div>
   );

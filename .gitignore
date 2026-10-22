@@ -12,3 +12,5 @@ data/backups/
 .DS_Store
 .next-e2e/
 .next-build/
+.next-e2e-mcp/
+artifacts/local-only/

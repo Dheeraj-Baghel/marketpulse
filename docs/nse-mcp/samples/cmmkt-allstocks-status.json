@@ -1,0 +1,24 @@
+{
+  "tool": "cm_get_allstocks_status",
+  "args": {},
+  "at": "2026-10-22T15:56:54.329Z",
+  "ms": 131,
+  "isError": false,
+  "contentTypes": [
+    "text"
+  ],
+  "structuredContent": false,
+  "payloadShape": {
+    "available": true,
+    "lastCrawled": "2026-10-22T15:56:32.940326952Z",
+    "crawlIntervalMinutes": "<number>",
+    "segmentCounts": {
+      "EQUITY": "<number>",
+      "SME": "<number>",
+      "CALL_AUCTION": "<number>",
+      "BONDS": "<number>",
+      "TOTAL": "<number>"
+    }
+  },
+  "error": null
+}
