@@ -8,7 +8,8 @@ import path from "node:path";
 import { chromium, type Page } from "playwright";
 
 const BASE = process.env.BASE ?? "http://127.0.0.1:4327";
-const SHOTS = path.resolve("artifacts/screenshots");
+// Real NSE data: screenshots stay local (git-ignored), never committed or shared.
+const SHOTS = path.resolve("artifacts/local-only");
 const browser = await chromium.launch();
 const errors: string[] = [];
 const watch = (p: Page) => {

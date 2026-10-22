@@ -370,7 +370,8 @@ outside Next.
 
 Real NSE calls are limited to the manual probes in `scripts/mcp-probe/` and
 [tests/e2e/probe-2c.mts](tests/e2e/probe-2c.mts), which run against the
-running app.
+running app. Its screenshots contain real NSE data, so they go to the
+git-ignored `artifacts/local-only/` folder.
 
 Synthetic fixtures exist only inside explicitly labelled unit tests. It writes
 `artifacts/testing/results.json` and screenshots to `artifacts/screenshots/`.
