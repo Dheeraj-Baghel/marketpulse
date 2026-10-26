@@ -4,7 +4,7 @@
   "private": true,
   "description": "Personal NSE stock research workspace. Stage 1: official NSE securities directory and dashboard.",
   "engines": {
-    "node": ">=20.9"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "next dev -p 4327",
