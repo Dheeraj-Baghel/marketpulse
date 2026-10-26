@@ -16,7 +16,7 @@ export function AppShell({ active, children }: { active: "dashboard" | null; chi
         </Link>
         <nav aria-label="Primary" className="flex items-center gap-8">
           <span className="hidden text-sm text-fg-muted md:block">Independent thinking. Informed research.</span>
-          <Link href="/" aria-current={active === "dashboard" ? "page" : undefined} className="flex min-h-11 items-center gap-2 rounded-full border border-line px-4 text-sm font-medium hover:bg-bg focus-visible:outline-2 focus-visible:outline-offset-4"><LayoutDashboard className="size-4" aria-hidden="true" /><span>Dashboard</span></Link>
+          <Link href="/" aria-current={active === "dashboard" ? "page" : undefined} className="flex min-h-11 items-center gap-2 rounded-full border border-line px-4 text-sm font-medium hover:bg-bg focus-visible:outline-2 focus-visible:outline-offset-4"><LayoutDashboard className="size-4" aria-hidden="true" /><span className={preview ? "sr-only sm:not-sr-only" : undefined}>Dashboard</span></Link>
         </nav>
       </header>
       {children}
