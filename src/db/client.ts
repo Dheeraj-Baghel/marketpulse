@@ -14,13 +14,16 @@ export function resolveDbPath(): string {
   // Never read user-imported data on the unlicensed public preview, even when
   // MARKETPULSE_DB_PATH points at a real local file. No serverless disk writes.
   if (isPublicPreview()) return ":memory:";
+  // Vercel's application filesystem is immutable. The dedicated server asset
+  // is an actual SQLite snapshot, not a fake data envelope or a /tmp database.
+  if (process.env.VERCEL === "1") return path.join(process.cwd(), "server-data", "marketpulse.sqlite");
   // Local-only path: do not let Next trace the entire workspace/user database.
   return path.resolve(/*turbopackIgnore: true*/ process.cwd(), process.env.MARKETPULSE_DB_PATH ?? "data/marketpulse.sqlite");
 }
 
 export type Db = BetterSQLite3Database<typeof schema>;
 
-const globalForDb = globalThis as unknown as { __marketpulseDb?: { path: string; db: Db; sqlite: Database.Database } };
+const globalForDb = globalThis as unknown as { __marketpulseDb?: { path: string; readonly: boolean; db: Db; sqlite: Database.Database } };
 
 /**
  * Opens (and migrates) the database once per process. Migrations are
@@ -29,17 +32,20 @@ const globalForDb = globalThis as unknown as { __marketpulseDb?: { path: string;
  */
 export function getDb(): Db {
   const dbPath = resolveDbPath();
+  const readonly = dbPath !== ":memory:" && (process.env.VERCEL === "1" || process.env.MARKETPULSE_DB_READONLY === "true");
   const cached = globalForDb.__marketpulseDb;
-  if (cached && cached.path === dbPath) return cached.db;
+  if (cached && cached.path === dbPath && cached.readonly === readonly) return cached.db;
+  cached?.sqlite.close();
 
-  if (dbPath !== ":memory:") fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  const sqlite = new Database(dbPath);
-  sqlite.pragma("journal_mode = WAL");
+  if (!readonly && dbPath !== ":memory:") fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  const sqlite = new Database(dbPath, { readonly, fileMustExist: readonly });
+  if (!readonly) sqlite.pragma("journal_mode = WAL");
+  else sqlite.pragma("query_only = ON");
   sqlite.pragma("foreign_keys = ON");
   sqlite.pragma("busy_timeout = 5000");
   const db = drizzle(sqlite, { schema });
-  migrate(db, { migrationsFolder: path.resolve(process.cwd(), "drizzle") });
-  globalForDb.__marketpulseDb = { path: dbPath, db, sqlite };
+  if (!readonly) migrate(db, { migrationsFolder: path.resolve(process.cwd(), "drizzle") });
+  globalForDb.__marketpulseDb = { path: dbPath, readonly, db, sqlite };
   return db;
 }
 

@@ -1,8 +1,10 @@
-# Public preview: no user data, provider keys or private probes are uploaded.
+# Real hosted mode: upload only the approved server snapshot, never raw local
+# databases, backups, CSVs, provider keys or probe output.
 /*
 !src/
 !public/
 !drizzle/
+!server-data/
 !scripts/
 !tests/
 !package.json
@@ -26,3 +28,5 @@ artifacts/
 **/.DS_Store
 scripts/mcp-probe/
 scripts/news-probe/
+server-data/*
+!server-data/marketpulse.sqlite

@@ -1,10 +1,11 @@
-// User selected a public website, not upload of the existing NSE database.
-// Keep the public deployment data-disabled pending redistribution permission.
-// Vercel is fail-closed even if provider enable flags are accidentally changed;
-// a future licensed deployment requires an explicit reviewed code change.
+// The user explicitly requested real hosted data, matching localhost.
+// Enable only in the dedicated deployment's server environment. Secrets never
+// reach NEXT_PUBLIC variables. Preview mode remains a safe explicit fallback.
+// Successful provider access is not a claim of public redistribution licensing.
 export function isPublicPreview(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.MARKETPULSE_PUBLIC_PREVIEW === "true" || env.VERCEL === "1";
+  if (env.MARKETPULSE_PUBLIC_PREVIEW === "true") return true;
+  return env.VERCEL === "1" && env.MARKETPULSE_REAL_DATA_ENABLED !== "true";
 }
 
 export const PUBLIC_PREVIEW_MESSAGE =
-  "Market data and company news are disabled on this public preview pending public-display licensing. No local database has been uploaded.";
+  "Server data access is not enabled for this deployment. Configure the approved server-side data mode to use the directory, historical prices, delayed quotes and company news.";
