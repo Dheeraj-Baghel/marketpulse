@@ -16,10 +16,10 @@ export function PageHeader({ title, subtitle, search, status }: { title: string;
           {dashboard && subtitle ? <p className="mt-4 text-sm font-medium">{subtitle} · Personal research</p> : null}
         </div>
       </div>
-      <div className="mt-10 flex flex-wrap items-center justify-between gap-4 rounded-[40px] border border-line bg-panel p-5 sm:p-6">
+      {search || status ? <div className="mt-10 flex flex-wrap items-center justify-between gap-4 rounded-[40px] border border-line bg-panel p-5 sm:p-6">
         {search ? <div className="w-full md:max-w-lg">{search}</div> : null}
         {status ? <div>{status}</div> : null}
-      </div>
+      </div> : null}
     </div>
   );
 }

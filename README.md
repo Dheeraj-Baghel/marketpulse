@@ -5,8 +5,10 @@ A personal NSE stock research workspace.
 ## GitHub and public preview — 26 October 2026
 
 The user selected a public website, not upload of the existing local NSE database.
-A dedicated **private** GitHub repository and a **data-disabled public Vercel
-preview** are being prepared. This is not a full functioning public research
+The source is in [a dedicated private GitHub repository](https://github.com/Dheeraj-Baghel/marketpulse),
+and [the data-disabled public Vercel preview](https://marketpulse-softtech10.vercel.app)
+is live. `main` pushes automatically deploy; Node 24 and a cloud lint/type/test/build
+gate are configured. This is not a full functioning public research
 service: NSE public-display permission and a hosting-compatible licensed data
 strategy are not established. Existing database/CSV files, backups and provider
 keys remain local. No fake market data is added.
@@ -15,6 +17,13 @@ The local app retains its directory, charts and news features. Vercel/public-pre
 mode is fail-closed: no local DB is opened, market/news APIs return an explicit
 licensing-unavailable response, and the page clearly explains the limitation.
 See [deployment boundaries and requirements](DEPLOYMENT.md).
+
+Local/cloud 88-unit gates pass. The original local application passes one real-CSV
+integration test and all 43 browser regression checks. The data-disabled preview
+passes 9 local production and 10 hosted checks, including zero-call provider health,
+API/data-file protection, navigation and 320/390/768 layouts. Source data and
+credentials are hash-verified unchanged. Physical devices/other browsers remain
+manual; no hosted market-data functionality or licensing approval is claimed.
 
 ## Chart day ranges — 1D / 2D / 7D
 
