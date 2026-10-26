@@ -9,7 +9,11 @@ export function historyApiRange(range: ChartRange): HistoryApiRange {
 }
 export const HISTORY_DEPTH: Record<HistoryApiRange, number> = { "3M": 1, "6M": 2, "1Y": 3, MAX: 4 };
 export function historyCovers(data: ValidatedSeries, loadedDepth: number, range: HistoryApiRange): boolean {
-  return data.meta.sourceId === "unavailable" || data.meta.provider?.complete === true || loadedDepth >= HISTORY_DEPTH[range];
+  // provider.complete describes the SERVER cache, not a sliced 3M response.
+  // Only skip extension when the payload itself reaches its reported beginning.
+  const entirePayload = data.meta.provider?.complete === true && data.candles.length > 0
+    && data.candles[0]?.time === data.meta.earliestTradingDate;
+  return data.meta.sourceId === "unavailable" || entirePayload || loadedDepth >= HISTORY_DEPTH[range];
 }
 /** Merge only the same provider AND trading identity. Never splice a stale CSV
  * fallback or another security into current NSE candles. Latest response wins. */
@@ -26,5 +30,6 @@ export function mergeLoadedHistory(previous: ValidatedSeries | undefined, next: 
   const candles = new Map(previous.candles.map(candle => [candle.time, candle]));
   for (const candle of next.candles) candles.set(candle.time, candle);
   const all = [...candles.values()].sort((a, b) => a.time.localeCompare(b.time));
-  return { ...next, candles: all, hasVolume: all.some(candle => candle.volume !== null), meta: { ...next.meta, earliestTradingDate: all[0]?.time ?? null, latestTradingDate: all.at(-1)?.time ?? null } };
+  const earliest = [previous.meta.earliestTradingDate, next.meta.earliestTradingDate, all[0]?.time].filter((date): date is string => Boolean(date)).sort()[0] ?? null;
+  return { ...next, candles: all, hasVolume: all.some(candle => candle.volume !== null), meta: { ...next.meta, earliestTradingDate: earliest, latestTradingDate: all.at(-1)?.time ?? null } };
 }

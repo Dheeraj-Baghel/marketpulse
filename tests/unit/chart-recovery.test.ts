@@ -92,6 +92,17 @@ test("short local CSV requests are extended for 1Y/ALL rather than falsely treat
   assert.equal(historyCovers(data, 4, "MAX"), true);
 });
 
+test("a complete SERVER cache does not mean a sliced 3M client response contains ALL history", () => {
+  const sliced = series("2026-10-23");
+  sliced.meta.provider!.complete = true; sliced.meta.earliestTradingDate = "2024-01-01";
+  assert.equal(historyCovers(sliced, 1, "MAX"), false);
+  assert.equal(historyCovers(sliced, 1, "1Y"), false);
+  const merged = mergeLoadedHistory(sliced, series("2026-07-24"));
+  assert.equal(merged.meta.earliestTradingDate, "2024-01-01");
+  const full = { ...sliced, candles: [{ ...sliced.candles[0]!, time: "2024-01-01" }, ...sliced.candles] };
+  assert.equal(historyCovers(full, 1, "MAX"), true);
+});
+
 test("an older stale CSV fallback cannot erase newer verified NSE candles", () => {
   const current = series("2026-10-23");
   const fallback = series("2025-10-24", "AARTIIND", "local-csv");

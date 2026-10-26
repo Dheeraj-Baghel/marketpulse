@@ -224,8 +224,11 @@ export async function runChartChecks(ctx: Ctx) {
     for (const [label, months] of [["1M", 1], ["3M", 3], ["6M", 6], ["1Y", 12], ["ALL", 0]] as const) {
       await page.getByRole("button", { name: label, exact: true }).click();
       await page.waitForFunction((l) => [...((window as ProbeWindow).__mpCharts?.values() ?? [])][0]?.dataKey.endsWith(`|${l}`), label);
-      const s = (await chartState(page))[0]!;
       const expected = months === 0 ? tcs : tcs.filter((r) => r.trade_date > minus(last, months));
+      // Range changes may keep the recent canvas visible while the requested
+      // longer window loads. Verify final data, not only the synchronous label.
+      await page.waitForFunction(count => [...((window as ProbeWindow).__mpCharts?.values() ?? [])][0]?.candles().length === count, expected.length);
+      const s = (await chartState(page))[0]!;
       assert(s.candles.length === expected.length && s.candles[0]?.time === expected[0]?.trade_date, `${label}: ${s.candles.length} vs ${expected.length}`);
       out.push(`${label}=${s.candles.length}`);
     }

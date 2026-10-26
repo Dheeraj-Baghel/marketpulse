@@ -5,9 +5,9 @@ import { PriceResponseError, validatePriceResponse, type ValidatedSeries, type C
 import { historyApiRange, historyCovers, mergeLoadedHistory, HISTORY_DEPTH, type HistoryApiRange } from "@/lib/charts/history-loading";
 
 /**
- * Loads the full stored daily history for ONE security from the Stage 2A
- * endpoint (GET /api/prices?symbol=&series=&range=MAX). Ranges are applied
- * client-side so switching 1M/3M/... never refetches.
+ * Paints recent (3M) daily history for ONE security first, then extends to the
+ * requested API window. Short/day filters reuse loaded data; ALL alone requests
+ * MAX. A failed longer load keeps verified recent candles and offers Retry.
  *
  * Stale-response protection (rapid company switching):
  *   1. every request is aborted when the selected security changes;
@@ -36,9 +36,8 @@ export interface SecurityKey {
 }
 
 /**
- * Stage 2C: the first ALL-history load from NSE Bhavcopy MCP chains ~21
- * three-month chunks server-side (a few seconds normally), so the client
- * budget is longer than for the local CSV path.
+ * Total budget for recent-first loading plus a selected-range extension.
+ * Already accepted candles remain visible if an extension reaches this budget.
  */
 export const REQUEST_TIMEOUT_MS = 45_000;
 const CACHE_LIMIT = 24;

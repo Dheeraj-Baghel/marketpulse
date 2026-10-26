@@ -71,6 +71,8 @@ export async function runMcpChecks(ctx: Ctx) {
     await waitChart(page, "RELIANCE");
     await page.getByRole("button", { name: "ALL", exact: true }).click();
     await page.waitForFunction(() => [...((window as ProbeWindow).__mpCharts?.values() ?? [])][0]?.dataKey.endsWith("|ALL"));
+    // Recent-first loading intentionally paints before ALL has completed.
+    await page.waitForFunction(count => [...((window as ProbeWindow).__mpCharts?.values() ?? [])][0]?.candles().length === count, apiCandles.length);
     const [s] = await plotted(page);
     assert(s && s.candles.length === apiCandles.length, `plotted ${s?.candles.length} vs API ${apiCandles.length}`);
     assert(s.candles.every((c, i) => c.time === apiCandles[i]!.date && c.close === apiCandles[i]!.close), "plotted candles differ from API");
@@ -176,11 +178,14 @@ export async function runMcpChecks(ctx: Ctx) {
       // Still within the transient TTL: previously fetched Bhavcopy data is shown, labelled cached.
       assert((await p2.getByTestId("source-badge").getAttribute("data-source")) === "nse-bhavcopy-mcp", "expected cached MCP data first");
       assert(/\(cached\)/.test(await p2.getByTestId("provider-freshness").innerText()), "cached label");
-      // User asks for fresh data during the outage -> explicit, labelled local CSV fallback.
+      // The API still offers a labelled CSV fallback, but a client which already
+      // has newer verified NSE candles keeps those rather than regressing dates.
+      const before = await plotted(p2);
       await p2.getByRole("button", { name: "Refresh historical data" }).click();
-      await p2.waitForFunction(() => document.querySelector("[data-testid=source-badge]")?.getAttribute("data-source") === "local-csv");
-      assert(/showing local CSV/.test(await p2.getByTestId("fallback-reason").innerText()), "fallback note");
-      assert(/fallback/.test(await p2.getByTestId("source-badge").innerText()), "badge marks fallback");
+      await p2.getByTestId("history-partial-warning").waitFor();
+      assert((await p2.getByTestId("source-badge").getAttribute("data-source")) === "nse-bhavcopy-mcp", "keep validated NSE source instead of old CSV");
+      assert(/Keeping verified NSE candles/.test(await p2.getByTestId("history-partial-warning").innerText()), "explicit extension warning");
+      assert(JSON.stringify(await plotted(p2)) === JSON.stringify(before), "verified candles changed during outage");
       await waitChart(p2, "RELIANCE");
     }
     await p2.locator("[data-testid=delayed-quote]:not([data-status=loading])").waitFor();
@@ -189,13 +194,13 @@ export async function runMcpChecks(ctx: Ctx) {
     if (qs === "stale") assert(/CACHED — STALE/.test(await p2.getByTestId("quote-source").innerText()), "stale label");
     await p2.mouse.move(0, 0);
     await p2.screenshot({ path: path.join(shots, "23-2c-outage-fallback.png") });
-    // Company with no CSV and MCP down -> explicit unavailable, no other company's data.
+    // No CSV and provider down is a retryable failure, never an empty success.
     const infy = await api(base, "/api/prices?symbol=INFY&series=EQ&range=MAX&refresh=1");
-    assert(infy.body.sourceId === "unavailable" && (infy.body.candles as unknown[]).length === 0, "INFY should be unavailable");
+    assert(infy.status === 502 && (infy.body.error as { code: string }).code === "PROVIDER_UNAVAILABLE", "INFY should expose retryable provider failure");
     await p2.close();
     await control(doubleBase, { reset: true });
     allowProviderErrors = false;
-    return `${ctx.hasCsv ? "cached Bhavcopy shown first (labelled cached); manual refresh during outage -> Local CSV fallback (isStale, reason UNAVAILABLE); " : ""}quote '${String(quote.body.sourceLabel)}' kept original timestamp; INFY unavailable`;
+    return `${ctx.hasCsv ? "API CSV fallback labelled; existing client keeps verified NSE candles + retry warning; " : ""}quote '${String(quote.body.sourceLabel)}' kept original timestamp; INFY retryable provider error`;
   });
 
   await check("32. 2C: malformed MCP responses are rejected, never rendered", async () => {
