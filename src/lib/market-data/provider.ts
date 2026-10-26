@@ -2,6 +2,7 @@ import "server-only";
 import { getNseMcpClient, readMcpConfig, type McpTransportLike } from "./nse-mcp-client";
 import { NseBhavcopyHistoryProvider } from "./nse-history-provider";
 import { NseCmQuoteProvider } from "./nse-quote-provider";
+import { isPublicPreview } from "../public-preview";
 
 /**
  * Provider registry + selection policy (Stage 2C).
@@ -54,8 +55,8 @@ export function readMarketDataConfig(env: NodeJS.ProcessEnv = process.env): Mark
     historyTtlMs: intEnv(env, "NSE_HISTORY_CACHE_TTL_SECONDS", 30 * 60, 60, 24 * 3600) * 1000,
     quoteTtlMs: intEnv(env, "NSE_QUOTE_CACHE_TTL_SECONDS", 60, 15, 3600) * 1000,
     quoteStaleMaxMs: intEnv(env, "NSE_QUOTE_STALE_MAX_SECONDS", 6 * 3600, 0, 7 * 24 * 3600) * 1000,
-    quoteAutoRefreshMs: intEnv(env, "NSE_QUOTE_AUTO_REFRESH_SECONDS", 120, 0, 3600) * 1000,
-    allowSourceOverride: env.NODE_ENV !== "production",
+    quoteAutoRefreshMs: isPublicPreview(env) ? 0 : intEnv(env, "NSE_QUOTE_AUTO_REFRESH_SECONDS", 120, 0, 3600) * 1000,
+    allowSourceOverride: !isPublicPreview(env) && env.NODE_ENV !== "production",
     configErrors: mcp.configErrors,
   };
 }

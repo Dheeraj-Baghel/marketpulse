@@ -1,66 +1,69 @@
 @import "tailwindcss";
 
-/*
- * MarketPulse design tokens (Stage 1 brief):
- * background #0B1018, sidebar #111A26, panels #172232, border #263548,
- * primary text #F1F5F9, secondary text #94A3B8, accent #5DD6B5.
- */
+@font-face {
+  font-family: "Sofia Sans";
+  src: url("/fonts/sofia-sans-variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 1 1000;
+  font-display: swap;
+}
+
+/* Supplied warm editorial brief, adapted for legible financial research.
+   Orange signals eyebrows only; ink actions, cream surfaces, no licensed brand assets. */
 @theme {
-  --color-bg: #0b1018;
-  --color-sidebar: #111a26;
-  --color-panel: #172232;
-  --color-line: #263548;
-  --color-fg: #f1f5f9;
-  --color-fg-muted: #94a3b8;
-  --color-accent: #5dd6b5;
-
-  --font-sans: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --color-bg: #f3f0ee;
+  --color-sidebar: #ffffff;
+  --color-panel: #fcfbfa;
+  --color-line: #d1cdc7;
+  --color-fg: #141413;
+  --color-fg-muted: #696969;
+  --color-accent: #141413;
+  --font-sans: "Sofia Sans", "Inter", Arial, sans-serif;
+  --font-mono: "Sofia Sans", "Inter", Arial, sans-serif;
 }
-
 @layer base {
-  html {
-    color-scheme: dark;
-    background: var(--color-bg);
-  }
-  body {
-    background: var(--color-bg);
-    color: var(--color-fg);
-    font-family: var(--font-sans);
-    font-feature-settings: "cv11", "ss01", "tnum";
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-  ::selection {
-    background: color-mix(in srgb, var(--color-accent) 35%, transparent);
-  }
-  :focus-visible {
-    outline-color: var(--color-accent);
-  }
-  * {
-    scrollbar-color: var(--color-line) transparent;
-  }
+  html { color-scheme: light; background: var(--color-bg); scroll-behavior: smooth; }
+  body { background: var(--color-bg); color: var(--color-fg); font-family: var(--font-sans); font-weight: 450; font-feature-settings: "tnum"; -webkit-font-smoothing: antialiased; }
+  ::selection { background: #e8e2da; }
+  :focus-visible { outline: 2px solid #3860be; outline-offset: 3px; }
+  * { scrollbar-color: var(--color-line) transparent; }
+  button, input, select { font-family: inherit; }
+  button:not(:disabled), a { -webkit-tap-highlight-color: transparent; }
 }
-
-@utility tabular {
-  font-variant-numeric: tabular-nums;
-}
-
-/* Faint measurement grid used by the (unconfigured) chart canvas. */
+@utility tabular { font-variant-numeric: tabular-nums; }
 @utility chart-grid {
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--color-line) 55%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--color-line) 55%, transparent) 1px, transparent 1px);
+  background-image: linear-gradient(to right, #d1cdc755 1px, transparent 1px), linear-gradient(to bottom, #d1cdc755 1px, transparent 1px);
   background-size: 64px 48px;
-  background-position: -1px -1px;
 }
-
+.mp-nav { width: calc(100% - 48px); box-shadow: 0 4px 24px rgba(0,0,0,.04); }
+.mp-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; line-height: 1; letter-spacing: .04em; text-transform: uppercase; }
+.mp-eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #cf4500; flex: none; }
+/* Shared legacy utility classes now express the brief's deliberate radius scale. */
+.rounded-lg { border-radius: 40px; }
+.rounded-md { border-radius: 20px; }
+.rounded { border-radius: 20px; }
+main { max-width: 1280px !important; }
+main > .grid { gap: 24px; }
+main section.rounded-lg { overflow: hidden; }
+button { min-height: 44px; }
+button:active:not(:disabled) { transform: translateY(1px); }
+input { min-height: 48px; border-radius: 999px !important; background: #fff !important; }
+select { min-height: 44px; border-radius: 20px !important; }
+#directory-heading { font-size: 20px; font-weight: 500; letter-spacing: -.02em; }
+/* Keep semantic gains/losses readable on cream, rather than pastel-on-dark. */
+.text-emerald-300, .text-emerald-400 { color: #176548; }
+.text-red-300, .text-red-400, .text-rose-300, .text-rose-400 { color: #a82b40; }
+.text-amber-200, .text-amber-300, .text-amber-400 { color: #805018; }
+.text-sky-200, .text-sky-300, .text-blue-300 { color: #3860be; }
+tbody tr { height: 48px; }
+main > header { padding-top: 32px; padding-bottom: 24px; }
+main > header h1 { font-weight: 500; letter-spacing: -.02em; font-size: clamp(32px, 4vw, 48px); }
+#selected-heading { font-weight: 500; font-size: 24px; letter-spacing: -.02em; }
+@media (max-width: 767px) {
+  .mp-nav { width: calc(100% - 32px); padding: 12px 16px; }
+  .mp-page-header { padding-top: 48px; }
+  .mp-footer { margin-top: 48px; }
+}
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }

@@ -11,8 +11,10 @@ import {
   formatSignedInr,
   formatSignedPct,
   formatVolume,
+  isSessionChartRange,
   largeDiscontinuities,
   previousSessionChange,
+  RANGE_SESSIONS,
   rangeAvailability,
   sliceRange,
   type ChartCandle,
@@ -145,7 +147,7 @@ export function StockPriceChart(props: StockPriceChartProps) {
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-2 pt-1 sm:px-5">
-        <div role="group" aria-label="Time range" className="flex rounded-md border border-line bg-bg p-0.5">
+        <div role="group" aria-label="Time range" className="flex flex-wrap rounded-md border border-line bg-bg p-0.5">
           {CHART_RANGES.map((r) => {
             const info = ranges[r];
             const selected = r === range;
@@ -154,15 +156,7 @@ export function StockPriceChart(props: StockPriceChartProps) {
                 key={r}
                 type="button"
                 aria-pressed={selected}
-                title={
-                  view.status !== "ready"
-                    ? undefined
-                    : !info.available
-                      ? `No stored sessions in this range`
-                      : !info.covered
-                        ? `Stored history covers less than ${r}`
-                        : `${info.sessions} sessions`
-                }
+                title={rangeTitle(r, view.status, info)}
                 onClick={() => onRangeChange(r)}
                 className={cn(
                   "h-7 min-w-9 rounded px-2 font-mono text-[11px] font-semibold tabular transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 sm:min-w-10",
@@ -214,7 +208,7 @@ export function StockPriceChart(props: StockPriceChartProps) {
             showVolume={hasVolume}
             resetToken={resetToken}
             onHover={setHoverDate}
-            ariaLabel={`${mode === "candles" ? "Candlestick" : "Line"} chart of ${symbol} ${series} daily ${mode === "line" ? "closing prices" : "OHLC"} from ${formatSessionDate(sliced.from!, false)} to ${formatSessionDate(sliced.to!, false)}, ${sliced.candles.length} sessions`}
+            ariaLabel={`${mode === "candles" ? "Candlestick" : "Line"} chart of ${symbol} ${series} daily ${mode === "line" ? "closing prices" : "OHLC"} ${sliced.from === sliced.to ? `for ${formatSessionDate(sliced.to!, false)}` : `from ${formatSessionDate(sliced.from!, false)} to ${formatSessionDate(sliced.to!, false)}`}, ${sessionCount(sliced.candles.length)}`}
           />
         )}
       </div>
@@ -225,6 +219,24 @@ export function StockPriceChart(props: StockPriceChartProps) {
 }
 
 const EMPTY: ChartCandle[] = [];
+
+function sessionCount(n: number): string {
+  return `${n} ${n === 1 ? "session" : "sessions"}`;
+}
+
+/** Day filters are trading sessions from daily EOD data, never intraday windows. */
+function rangeTitle(range: ChartRange, status: string, info: { available: boolean; covered: boolean; sessions: number }): string {
+  const sessionRange = isSessionChartRange(range);
+  const definition = sessionRange
+    ? `Latest ${sessionCount(RANGE_SESSIONS[range])} of daily EOD data`
+    : range === "ALL"
+      ? "All stored daily EOD sessions"
+      : `Daily EOD sessions in the last ${range}`;
+  if (status !== "ready") return definition;
+  if (!info.available) return `${definition}: no stored sessions`;
+  if (!info.covered) return sessionRange ? `${definition}: only ${sessionCount(info.sessions)} stored` : `${definition}: stored history covers less than ${range}`;
+  return `${definition}: ${sessionCount(info.sessions)}`;
+}
 
 /** Explains WHY there is no history, without implying data exists elsewhere. */
 function noDataBody(symbol: string, series: string, reason: { code: string; message: string } | null): string {
@@ -425,7 +437,12 @@ function ChartFooter({
       ) : null}
       {range !== "ALL" && rangeInfo.available && !rangeInfo.covered ? (
         <span data-testid="range-partial" className="text-amber-200">
-          {range} shows {slicedCount} sessions: available history is shorter than {range}.
+          {range} shows {sessionCount(slicedCount)}: available history is shorter than {range}.
+        </span>
+      ) : null}
+      {isSessionChartRange(range) && slicedCount > 0 ? (
+        <span data-testid="session-range-note">
+          {range} = latest {sessionCount(RANGE_SESSIONS[range])} of daily EOD data, not intraday prices.
         </span>
       ) : null}
       {!hasVolume ? <span data-testid="volume-missing">Volume not reported by the source; volume pane hidden.</span> : null}
@@ -471,7 +488,7 @@ function IconButton({ label, onClick, children, disabled, pressed }: { label: st
 
 function ChartSkeleton({ label }: { label: string }) {
   return (
-    <div role="status" aria-label={label} data-testid="chart-loading" className="absolute inset-0 flex flex-col gap-3 bg-[#0B111B] p-4">
+    <div role="status" aria-label={label} data-testid="chart-loading" className="absolute inset-0 flex flex-col gap-3 bg-panel p-4">
       <div className="flex flex-1 items-end gap-1.5 opacity-60" aria-hidden="true">
         {/* Neutral shimmer blocks of equal height steps: deliberately not price-shaped. */}
         {Array.from({ length: 28 }, (_, i) => (
@@ -500,7 +517,7 @@ function ChartMessage({
   kind: string;
 }) {
   return (
-    <div data-testid="chart-message" data-kind={kind} role={tone === "error" ? "alert" : "status"} className="absolute inset-0 grid place-items-center bg-[#0B111B] chart-grid px-6 text-center">
+    <div data-testid="chart-message" data-kind={kind} role={tone === "error" ? "alert" : "status"} className="absolute inset-0 grid place-items-center bg-panel chart-grid px-6 text-center">
       <div className="max-w-sm">
         <span className={cn("mx-auto grid size-10 place-items-center rounded-full border bg-bg/80", tone === "error" ? "border-red-400/30" : "border-line")}>
           <Icon className={cn("size-5", tone === "error" ? "text-red-300" : "text-fg-muted")} aria-hidden="true" />

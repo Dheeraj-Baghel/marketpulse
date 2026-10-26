@@ -4,6 +4,10 @@ const config: NextConfig = {
   poweredByHeader: false,
   // better-sqlite3 is a native module; keep it out of the server bundle.
   serverExternalPackages: ["better-sqlite3"],
+  // The public preview builds its empty schema in memory. Native SQLite and
+  // these exact migration files must be present in every serverless function.
+  outputFileTracingIncludes: { "/*": ["./drizzle/**/*"] },
+  outputFileTracingExcludes: { "/*": ["./data/**/*", "./artifacts/**/*", "./docs/**/*", "./.env*", "./.git/**/*"] },
   // Allow dev-server resources (HMR websocket) when opened via 127.0.0.1 as well as localhost.
   allowedDevOrigins: ["127.0.0.1"],
   // The floating dev badge overlaps the sidebar footer; errors still surface in the overlay.

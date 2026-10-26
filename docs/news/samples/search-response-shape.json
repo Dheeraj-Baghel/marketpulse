@@ -1,0 +1,42 @@
+{
+  "request": {
+    "endpoint": "https://gnews.io/api/v4/search",
+    "params": {
+      "q": "\"Infosys\"",
+      "lang": "en",
+      "max": "10",
+      "sortby": "publishedAt",
+      "from": "<iso8601>",
+      "to": "<iso8601>",
+      "in": "title,description",
+      "nullable": "description,image,content"
+    }
+  },
+  "status": 200,
+  "shape": {
+    "information": {
+      "realTimeArticles": {
+        "message": "<string>"
+      }
+    },
+    "totalArticles": 263,
+    "articles": [
+      {
+        "id": "<string>",
+        "title": "<string>",
+        "description": "<string>",
+        "content": "<string>",
+        "url": "<string>",
+        "image": "<string>",
+        "publishedAt": "<string>",
+        "lang": "<string>",
+        "source": {
+          "id": "<string>",
+          "name": "<string>",
+          "url": "<string>",
+          "country": "<string>"
+        }
+      }
+    ]
+  }
+}

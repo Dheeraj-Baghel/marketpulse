@@ -1,10 +1,12 @@
-import { AlertTriangle, ArrowLeft, Bot, FileText, Newspaper } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { CompanyChart } from "@/components/company/company-chart";
+import { AnnualReports } from "@/components/company/annual-reports";
 import { FutureSection } from "@/components/company/future-section";
+import { CompanyNews } from "@/components/news/CompanyNews";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { validatePriceResponse, type ValidatedSeries } from "@/lib/charts/candles";
@@ -23,6 +25,8 @@ import {
   stockHref,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { isPublicPreview } from "@/lib/public-preview";
+import { PublicPreview } from "@/components/directory/public-preview";
 
 export const dynamic = "force-dynamic";
 
@@ -37,11 +41,15 @@ async function load(props: PageProps<"/stocks/[symbol]">) {
 }
 
 export async function generateMetadata(props: PageProps<"/stocks/[symbol]">): Promise<Metadata> {
+  if (isPublicPreview()) return { title: "Company research unavailable — public preview" };
   const { symbol, company } = await load(props);
   return { title: company ? `${company.symbol} · ${company.name}` : symbol };
 }
 
 export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
+  if (isPublicPreview()) {
+    return <AppShell active={null}><main id="main" className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6"><PublicPreview /></main></AppShell>;
+  }
   const { raw, symbol, company } = await load(props);
   if (!company) notFound();
   // Canonical upper-case URL (e.g. /stocks/infy -> /stocks/INFY).
@@ -126,6 +134,11 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
             <CompanyChart securityId={chartListing.id} symbol={chartListing.symbol} series={chartListing.series} name={company.name} initialData={initialData} quotes={quotes} />
           </section>
         ) : null}
+
+        {/* Stage 3: full-width news beneath the chart; independent request, never blocks the chart. */}
+        <div className="mt-4">
+          <CompanyNews symbol={company.symbol} companyName={company.name} />
+        </div>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <Card aria-labelledby="identity-heading">
@@ -215,10 +228,9 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
           </div>
         </div>
 
-        <h2 className="mt-8 text-[11px] font-semibold uppercase tracking-[0.14em] text-fg-muted">Planned research sections</h2>
-        <div className="mt-3 grid gap-4 md:grid-cols-3">
-          <FutureSection icon={Newspaper} title="Recent company news" description="Company announcements and news coverage will appear here once a news source is connected." />
-          <FutureSection icon={FileText} title="Annual report" description="The latest annual report and its key sections will be available here in a later stage." />
+        <h2 className="mt-8 text-[11px] font-semibold uppercase tracking-[0.14em] text-fg-muted">Reports and research</h2>
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <AnnualReports symbol={company.symbol} segment={company.segment} />
           <FutureSection icon={Bot} title="AI insights" description="Summaries generated from reports and news will appear here in a later stage." />
         </div>
       </main>

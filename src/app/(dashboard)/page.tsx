@@ -10,11 +10,23 @@ import { PageHeader } from "@/components/layout/page-header";
 import { getDirectoryPage, getDirectoryStatus, parseDirectoryQuery } from "@/lib/directory/queries";
 import { readMarketDataConfig } from "@/lib/market-data/provider";
 import { SEGMENT_SHORT } from "@/lib/format";
+import { isPublicPreview } from "@/lib/public-preview";
+import { PublicPreview } from "@/components/directory/public-preview";
 
 // Reads the local SQLite directory on every request (it changes after imports).
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage(props: PageProps<"/">) {
+  if (isPublicPreview()) {
+    return (
+      <AppShell active="dashboard">
+        <PageHeader title="MarketPulse" subtitle="Public preview — data services disabled" />
+        <main id="main" className="mx-auto w-full max-w-[1600px] px-4 pb-10 pt-4 sm:px-6">
+          <PublicPreview />
+        </main>
+      </AppShell>
+    );
+  }
   const params = await props.searchParams;
   const query = parseDirectoryQuery(params);
   const status = getDirectoryStatus();

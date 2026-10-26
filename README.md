@@ -1,8 +1,78 @@
-# MarketPulse — NSE directory, historical prices, charts and NSE MCP data (Stages 1–2C)
+# MarketPulse — NSE directory, prices, charts, news and annual-report redirect (Stages 1–4)
 
-A personal NSE stock research workspace:
+A personal NSE stock research workspace.
 
-- **Stage 1** — dark research dashboard over the official NSE equity directory
+## GitHub and public preview — 26 October 2026
+
+The user selected a public website, not upload of the existing local NSE database.
+A dedicated **private** GitHub repository and a **data-disabled public Vercel
+preview** are being prepared. This is not a full functioning public research
+service: NSE public-display permission and a hosting-compatible licensed data
+strategy are not established. Existing database/CSV files, backups and provider
+keys remain local. No fake market data is added.
+
+The local app retains its directory, charts and news features. Vercel/public-preview
+mode is fail-closed: no local DB is opened, market/news APIs return an explicit
+licensing-unavailable response, and the page clearly explains the limitation.
+See [deployment boundaries and requirements](DEPLOYMENT.md).
+
+## Chart day ranges — 1D / 2D / 7D
+
+The stock chart range bar is now **1D · 2D · 7D · 1M · 3M · 6M · 1Y · ALL**.
+The earlier 1H / 3H / 5H controls (which were always unavailable, because the
+sources only provide daily candles) were removed. 1D / 2D / 7D show the latest
+1, 2 or 7 stored NSE trading sessions, skipping weekends and holidays; 1D is the
+latest daily candle, not an intraday chart. Tooltips and the chart footer say so.
+Short windows are centred at a readable candle width, and line mode adds point
+markers so a single close is visible. Reset view restores that framing.
+
+Verified: lint, TypeScript, 82 unit tests, production build and the full
+43-check browser E2E suite (local CSV import plus local MCP/GNews test doubles;
+no NSE or GNews traffic). The E2E suite was updated for the editorial dashboard
+heading, the Stage 4 Annual Reports card, and the chart's below-the-fold position
+at 1440x900 (it is scrolled into view before hover/zoom checks). Range screenshots:
+artifacts/screenshots/day-ranges/.
+
+## Stage 4 — official NSE annual-report redirect
+
+Company pages now replace the annual-report placeholder with an external anchor
+to NSE's official annual-report listing. Mainboard links use the database symbol
+with `tabIndex=equity`; RELIANCE, TCS, INFY, HDFCBANK and ITC were checked in the
+MarketPulse browser UI. NSE's site rejected direct automated browser navigation
+from this environment with `ERR_HTTP2_PROTOCOL_ERROR`, so the final filter state
+inside NSE could not be independently inspected here. SME `tabIndex=sme` was
+therefore not treated as verified: SME pages use the general NSE annual-report
+page and show the symbol for manual search. RAVITA was the SME test case.
+
+All links are real anchors with a new-tab target and `noopener noreferrer`.
+Mobile at 390px had no horizontal overflow. Lint, TypeScript, 80 unit tests and
+the production build pass. The existing dynamic SQLite path build warning remains.
+No reports are downloaded, stored, scraped or represented as available.
+
+## Editorial UI refresh — 23 October 2026
+
+The supplied Mastercard-inspired brief is adapted to a research dashboard:
+warm #F3F0EE canvas, #FCFBFA panels, floating white pill navigation, 40px
+research containers, ink pill actions, orange-dot eyebrows, tight medium-weight
+headlines and a warm-black informational footer. Local OFL Sofia Sans variable
+font supplies true 450 body weight; its license is in public/fonts/OFL.txt.
+MarketPulse keeps its own identity. No proprietary font or Mastercard logo is used.
+Circular photographic service cards and decorative orbit sections are deliberately
+not inserted into the working directory/table/chart flow. Navigation offers only
+existing routes, so a hamburger hiding a single link is unnecessary.
+
+Search, filters, pagination, selection, company details and data-provider logic
+are unchanged. Charts and loading/error surfaces use cream with readable semantic
+gain/loss colors. Desktop/tablet/mobile browser checks at 1440/768/390px found no
+horizontal overflow or page errors; search and company details were exercised.
+Screenshots are in artifacts/screenshots/editorial-redesign/. Client prices/quotes
+were blocked in this focused UI check to avoid external provider requests; live
+provider/chart success and full end-to-end suites were not rerun for this refresh.
+Lint, type checks, all 74 unit tests and production build passed. Build reports
+a dynamic SQLite path filesystem-tracing warning. No deployment or unrelated
+app changes.
+
+- **Stage 1** — research dashboard over the official NSE equity directory
   (search, pagination, selection, company pages).
 - **Stage 2A** — authentic daily price history imported from manually
   downloaded NSE security-wise CSVs, served by `GET /api/prices`.
@@ -15,9 +85,13 @@ A personal NSE stock research workspace:
 
   Both are fetched on demand and held only transiently in memory. The local CSV
   data stays as the fallback.
+- **Stage 3** — **company news from the last 14 days** on `/stocks/[symbol]`.
+  It uses the GNews API (server-side), deterministic relevance matching and
+  de-duplication, with a 2-hour transient cache. Details are in
+  [Company news](#company-news-stage-3).
 
-News, annual reports and AI insights are **not implemented**; they remain
-clearly labelled, non-interactive placeholders. Nothing is labelled live:
+Annual reports and AI insights are **not implemented**; they remain clearly
+labelled, non-interactive placeholders. Nothing is labelled live:
 
 - history is **Historical EOD — NSE Bhavcopy** (or **Local CSV — Historical EOD**);
 - the quote is **NSE CM Market — Delayed Quote**, stamped with NSE's own
@@ -38,6 +112,7 @@ npm run import:nse      # after placing the official CSVs in data/nse/ (see belo
 npm run import:prices -- --symbol RELIANCE --series EQ data/prices/Reliance.csv
 npm run dev             # http://127.0.0.1:4327
 # or: npm run build && npm run start
+# news: put GNEWS_API_KEY=... in .env.local (git-ignored), then restart dev
 ```
 
 The database is created and migrated automatically on first use, so an empty
@@ -176,9 +251,17 @@ implementation, `LocalNseHistoricalProvider` (SQLite).
   `AbortController`, and results are keyed by symbol+series and shown only for
   the selected key. Successful results are cached per page load.
 - **Controls:**
-  - Ranges 1M / 3M / 6M / 1Y / ALL are applied client-side, anchored on the
-    latest stored session. The footer states the real stored coverage and
-    warns if a range exceeds it.
+  - Ranges 1D / 2D / 7D / 1M / 3M / 6M / 1Y / ALL are applied client-side,
+    anchored on the latest stored session. The footer states the real stored
+    coverage and warns if a range exceeds it.
+  - **1D / 2D / 7D** are the latest 1, 2 or 7 stored **trading sessions** of
+    daily EOD data, not calendar days and not intraday prices. 1D is the
+    latest daily candle; weekends and exchange holidays are skipped, so these
+    ranges are never empty while history exists. The footer states this, and
+    sparse candles are centred at a readable width (line mode shows point
+    markers so a single close stays visible). The earlier unavailable
+    1H / 3H / 5H placeholders were removed: the sources provide no intraday
+    candles.
   - Candlestick/line toggle (line = closes).
   - Crosshair OHLCV readout, which shows the latest session when not hovering.
   - Volume pane coloured by direction, hidden if the source has no volume.
@@ -312,6 +395,101 @@ silently. A quote is never turned into, or appended as, a candle.
 - Committed probe samples in `docs/nse-mcp/samples/` are redacted to shapes
   only.
 
+## Company news (Stage 3)
+
+`/stocks/[symbol]` shows **Recent News**, articles from the past 14 days,
+beneath the chart. It is loaded by its own request, so news never delays or
+breaks charts or quotes. The real GNews probe results are in
+[docs/news/FINDINGS.md](docs/news/FINDINGS.md).
+
+**Setup:** put your free GNews key in **`.env.local`** (git-ignored, read only
+by the server), then restart `npm run dev`:
+
+```env
+GNEWS_API_KEY=your_key_here
+```
+
+Never put the key in `.env.example` (committed) or in a `NEXT_PUBLIC_`
+variable. Optional settings: `NEWS_PROVIDER=gnews`, `NEWS_LOOKBACK_DAYS=14`,
+`NEWS_CACHE_TTL_SECONDS=7200`, `NEWS_DAILY_REQUEST_BUDGET=90` (see
+[.env.example](.env.example)). Without a key the section says "News provider
+not configured." and shows these instructions.
+
+**Pipeline** ([src/lib/news/](src/lib/news/)):
+
+1. The symbol is validated against the NSE directory; unknown symbols return 404.
+2. The company is resolved by symbol. All series of a symbol count as one
+   company.
+3. A query is built from the **verified directory name**, with suffixes such as
+   "Limited" removed for search only
+   ([company-query.ts](src/lib/news/company-query.ts)).
+4. GNews `GET https://gnews.io/api/v4/search` is called with
+   `q, lang=en, max=10, sortby=publishedAt, from, to, in=title,description,
+   nullable`. The key goes in the `X-Api-Key` header, never in the URL.
+5. Responses are validated:
+   - http(s) links only, with no credentials, localhost or bare IPs;
+   - strict ISO timestamps;
+   - tags stripped from text.
+6. Articles are re-checked against the rolling 14-day window (UTC) and
+   relevance-matched.
+7. Duplicates are removed: same id, canonical URL (tracking parameters and AMP
+   variants removed), identical title, or ≥ 90% title similarity from the same
+   publisher or within 30 minutes.
+8. Results are sorted newest first.
+
+**Company matching** ([matching.ts](src/lib/news/matching.ts)) is
+deterministic and uses no AI:
+
+- **Verified:** the headline names the company (full name or a strong alias),
+  or the headline has a weak alias right next to a market word, e.g. "TCS
+  shares" or "stake in ITC".
+- **Likely:** the summary names the company. These are shown with a "Mentions
+  company" tag.
+- **Rejected:** only a different listed company with a similar name is
+  mentioned (Reliance Power, ITC Hotels, HDFC Life). Also rejected: a bare
+  acronym without company context (e.g. "TCS" meaning tax collected at
+  source), or no mention at all.
+
+The query never adds the bare symbol. The alias list is small and hand-verified:
+
+| Symbol | Aliases |
+| --- | --- |
+| RELIANCE | "RIL" (strong) |
+| TCS | "TCS" (weak) |
+| ITC | "ITC Ltd"/"ITC Limited" (strong), "ITC" (weak) |
+
+Weak aliases are matched case-sensitively and only together with market
+context.
+
+**Quota and cache:**
+
+- **Cache:** news is fetched only when a company page opens, and kept in a
+  transient in-memory cache per company for 2 h (configurable). Empty results
+  are cached too, concurrent requests share one call, and cached articles are
+  re-filtered against the current 14-day window. Nothing is written to SQLite,
+  because GNews's free terms neither grant nor forbid retention.
+- **Pacing:** requests are spaced 1.1 s apart (the free limit is 1 per second).
+- **Daily budget:** a local guard allows at most `NEWS_DAILY_REQUEST_BUDGET`
+  (90) requests per UTC day, leaving headroom under the 100/day limit.
+- **On HTTP 403** (quota reached) no further calls are made until 00:00 UTC.
+  Cached articles are shown with "Daily news API limit reached…" and their
+  original "Last checked" time.
+- **On 429** there is a 5-second cool-down. On 5xx or a timeout the section
+  shows "Unable to fetch recent news." with Retry.
+- Provider errors are never reported as "no news".
+
+**UI** ([src/components/news/](src/components/news/)): text-first cards with
+headline, publisher, IST time, domain and a short summary.
+
+- Article images are never shown (third-party copyright).
+- Links open the original publisher in a new tab with
+  `rel="noopener noreferrer nofollow"`.
+- The header shows the provider status, "Last checked" and a refresh button.
+- The footer notes the ~12-hour free-plan delay, the 10-result limit per
+  request when the provider reports more matches, and attribution.
+- Empty state: "No matching company news found in the previous 14 days", with
+  a note that this does not mean no news exists.
+
 ## Features (Stage 1)
 
 - Sidebar (MarketPulse brand, Dashboard), header with title, debounced search
@@ -346,8 +524,9 @@ npm run test:e2e          # Chromium acceptance run (needs data/nse/*.csv; chart
 ```
 
 `test:e2e` starts an isolated `next dev` on port 4329 (separate build folder,
-throwaway database, so it can run alongside `npm run dev`). It runs 34 checks
-plus a zero-console-error check, and **never contacts NSE**:
+throwaway database, so it can run alongside `npm run dev`). It runs 42 checks
+plus a zero-console-error check, and **never contacts NSE or GNews** (the real
+`GNEWS_API_KEY` from `.env.local` is explicitly blanked for test servers):
 
 - Stage 1 directory behaviour.
 - Stage 2A import/API.
@@ -367,6 +546,20 @@ plus a zero-console-error check, and **never contacts NSE**:
   - malformed payloads;
   - unsupported securities;
   - the details page and 390 px layout.
+- Stage 3 (checks 35–42) uses the same second server plus a **local synthetic
+  GNews double**, [gnews-double.mts](tests/e2e/gnews-double.mts). Its headlines
+  are tagged `[TEST]` and its URLs are on `example.com`. The checks cover:
+  - relevance (a sibling company, a TCS tax story, a duplicate and a 20-day-old
+    story are all rejected);
+  - newest-first order and IST timestamps;
+  - safe outbound links and no images;
+  - the key sent as a header and never leaked;
+  - cache revisits making 0 calls;
+  - the SME empty state;
+  - fast company switching;
+  - quota → stale articles with the original "Last checked", plus no further calls;
+  - not-configured state;
+  - 820/390 px layouts.
 
 Unit tests run with `--conditions=react-server` so server-only modules load
 outside Next.

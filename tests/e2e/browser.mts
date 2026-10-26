@@ -20,6 +20,8 @@ import { chromium, type Page } from "playwright";
 import { runChartChecks } from "./chart-checks.mjs";
 import { startMcpDouble } from "./mcp-double.mjs";
 import { runMcpChecks } from "./mcp-checks.mjs";
+import { startGNewsDouble } from "./gnews-double.mjs";
+import { runNewsChecks } from "./news-checks.mjs";
 
 const ROOT = process.cwd();
 const PORT = Number(process.env.E2E_PORT ?? 4329);
@@ -31,18 +33,25 @@ const DB = path.join(dbDir, "e2e.sqlite");
 // Separate build dir so this run can coexist with a developer's `npm run dev`.
 // Stages 1-2B run with NSE MCP DISABLED: they verify the local CSV path exactly
 // as before, and automated runs never contact NSE.
+// IMPORTANT: `next dev` also loads .env.local (which may hold the user's real
+// GNEWS_API_KEY). Real environment variables take precedence over .env files,
+// so the key is explicitly blanked here: automated runs never spend GNews quota.
 const env = {
   ...process.env,
   MARKETPULSE_DB_PATH: DB,
   MARKETPULSE_DIST_DIR: ".next-e2e",
   NEXT_TELEMETRY_DISABLED: "1",
   ENABLE_NSE_MCP: "false",
+  GNEWS_API_KEY: "",
+  NEWS_PROVIDER: "gnews",
 };
 // Stage 2C runs a second dev server against a LOCAL synthetic MCP double
 // (tests/e2e/mcp-double.mts) via the test-only loopback allowance.
 const MCP_PORT = Number(process.env.E2E_MCP_DOUBLE_PORT ?? 4392);
 const MCP_APP_PORT = Number(process.env.E2E_MCP_APP_PORT ?? 4330);
 const MCP_BASE = `http://127.0.0.1:${MCP_APP_PORT}`;
+// Stage 3: the same second server also talks to a LOCAL synthetic GNews double.
+const NEWS_DOUBLE_PORT = Number(process.env.E2E_NEWS_DOUBLE_PORT ?? 4393);
 const mcpEnv = {
   ...env,
   MARKETPULSE_DIST_DIR: ".next-e2e-mcp",
@@ -56,6 +65,10 @@ const mcpEnv = {
   NSE_MCP_MIN_INTERVAL_MS: "0",
   NSE_QUOTE_CACHE_TTL_SECONDS: "15",
   NSE_QUOTE_AUTO_REFRESH_SECONDS: "0",
+  GNEWS_API_KEY: "e2etestgnewskey0000000000000000", // fake; only accepted by the local double
+  MARKETPULSE_ALLOW_LOOPBACK_NEWS: "1",
+  GNEWS_ENDPOINT_OVERRIDE: `http://127.0.0.1:${NEWS_DOUBLE_PORT}/api/v4/search`,
+  NEWS_CACHE_TTL_SECONDS: "7200",
 };
 
 for (const f of ["EQUITY_L.csv", "SME_EQUITY_L.csv"]) {
@@ -143,6 +156,7 @@ server.stderr.on("data", (d) => (serverLog += d));
 let mcpServer: ReturnType<typeof spawn> | null = null;
 let mcpServerLog = "";
 let mcpDouble: Awaited<ReturnType<typeof startMcpDouble>> | null = null;
+let newsDouble: Awaited<ReturnType<typeof startGNewsDouble>> | null = null;
 
 try {
   await waitForServer();
@@ -163,7 +177,8 @@ try {
   await check("1. Homepage loads without runtime errors", async () => {
     const res = await page.goto(`${BASE}/`);
     assert(res?.status() === 200, `status ${res?.status()}`);
-    await page.getByRole("heading", { name: "Dashboard", level: 1 }).waitFor();
+    // Editorial UI refresh: the dashboard h1 is the editorial headline.
+    await page.getByRole("heading", { level: 1, name: /See the market/ }).waitFor();
     assert(consoleErrors.length === 0, `console errors: ${consoleErrors.join(" | ")}`);
     return "HTTP 200, no console/page errors";
   });
@@ -264,7 +279,7 @@ try {
     await page.waitForURL(`${BASE}/stocks/RELIANCE`);
     await page.getByRole("heading", { level: 1, name }).waitFor();
     const text = await page.locator("main").innerText();
-    for (const expected of ["NSE symbol", "ISIN", "Listing segment", "Security series", "Recent company news", "Annual report", "AI insights"]) {
+    for (const expected of ["NSE symbol", "ISIN", "Listing segment", "Security series", "Recent News", "Annual Reports", "AI insights"]) {
       assert(text.includes(expected), `missing "${expected}"`);
     }
     const futureButtons = await page.locator("section[aria-label$='(not available yet)'] :is(button, a)").count();
@@ -280,7 +295,7 @@ try {
     await page.goto(`${BASE}/stocks/RELIANCE`);
     await page.getByRole("link", { name: "Back to dashboard" }).click();
     await page.waitForURL(`${BASE}/`);
-    return `"${name}" with identity fields + 3 inert placeholders; /stocks/reliance redirects; unknown symbol 404; back link works`;
+    return `"${name}" with identity fields, Recent News, Annual Reports link + inert AI placeholder; /stocks/reliance redirects; unknown symbol 404; back link works`;
   });
 
   await check("9. Mobile layout is usable", async () => {
@@ -390,11 +405,30 @@ try {
   // ---------------------------------------------------------------- Stage 2C
   // Same database (real directory + real CSV imports), MCP enabled, pointed at the synthetic double.
   mcpDouble = await startMcpDouble(MCP_PORT);
+  newsDouble = await startGNewsDouble(NEWS_DOUBLE_PORT);
   mcpServer = spawn("npx", ["next", "dev", "-p", String(MCP_APP_PORT)], { cwd: ROOT, env: mcpEnv, stdio: ["ignore", "pipe", "pipe"] });
   mcpServer.stdout?.on("data", (d) => (mcpServerLog += d));
   mcpServer.stderr?.on("data", (d) => (mcpServerLog += d));
   await waitForServer(MCP_BASE, () => mcpServerLog);
   await runMcpChecks({ browser, base: MCP_BASE, doubleBase: `http://127.0.0.1:${MCP_PORT}`, shots: SHOTS, check, consoleErrors, hasCsv: Boolean(relianceCsv && tcsCsv) });
+
+  // ---------------------------------------------------------------- Stage 3
+  await runNewsChecks({ browser, base: MCP_BASE, newsBase: `http://127.0.0.1:${NEWS_DOUBLE_PORT}`, shots: SHOTS, check, consoleErrors });
+
+  await check("42. 3: Stage 1-2B server without a news key shows 'News provider not configured.'", async () => {
+    const r = await fetch(`${BASE}/api/news?symbol=RELIANCE`);
+    const body = (await r.json()) as { state: string; message: string; articles: unknown[] };
+    assert(r.status === 200 && body.state === "not-configured" && body.message === "News provider not configured." && body.articles.length === 0, JSON.stringify(body).slice(0, 200));
+    const p = await browser.newPage();
+    await p.goto(`${BASE}/stocks/RELIANCE`);
+    await p.locator("[data-testid=company-news][data-state=not-configured]").waitFor({ timeout: 120_000 });
+    const msg = await p.getByTestId("news-message").innerText();
+    assert(/News provider not configured\./.test(msg) && /GNEWS_API_KEY/.test(msg) && /\.env\.local/.test(msg), msg);
+    assert(await p.getByRole("button", { name: "Refresh news" }).isDisabled(), "refresh must be disabled when not configured");
+    await p.locator("[data-testid=stock-price-chart][data-status=ready] canvas").first().waitFor({ timeout: 120_000 });
+    await p.close();
+    return "state not-configured + setup instruction; refresh disabled; chart unaffected";
+  });
 
   await check("No browser console errors during the run", async () => {
     assert(consoleErrors.length === 0, consoleErrors.join(" | "));
@@ -406,6 +440,7 @@ try {
   server.kill("SIGTERM");
   mcpServer?.kill("SIGTERM");
   await mcpDouble?.close();
+  await newsDouble?.close();
   fs.writeFileSync(
     path.join(OUT, "results.json"),
     JSON.stringify({ ranAt: new Date().toISOString(), base: BASE, results, consoleErrors }, null, 2),

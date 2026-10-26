@@ -1,17 +1,17 @@
 import { ColorType, CrosshairMode, LineStyle, TickMarkType, type DeepPartial, type ChartOptions, type Time } from "lightweight-charts";
 import { formatAxisPrice, formatCompactVolume, formatSessionDate, timeToIso } from "@/lib/charts/candles";
 
-/** Stage 2B chart palette (from the brief). */
+/** Cream research canvas; gain/loss remain distinct semantic colors. */
 export const CHART_COLORS = {
-  bullish: "#39D6A3",
-  bearish: "#F07178",
-  background: "#0B111B",
-  grid: "#223145",
-  text: "#A2B4C7",
-  line: "#5DD6B5",
-  crosshair: "#4B5F78",
-  volumeBullish: "rgba(57, 214, 163, 0.45)",
-  volumeBearish: "rgba(240, 113, 120, 0.45)",
+  bullish: "#176548",
+  bearish: "#A82B40",
+  background: "#FCFBFA",
+  grid: "#E8E2DA",
+  text: "#696969",
+  line: "#3860BE",
+  crosshair: "#555555",
+  volumeBullish: "rgba(23, 101, 72, 0.35)",
+  volumeBearish: "rgba(168, 43, 64, 0.35)",
 } as const;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -22,7 +22,7 @@ export function baseChartOptions(): DeepPartial<ChartOptions> {
     layout: {
       background: { type: ColorType.Solid, color: CHART_COLORS.background },
       textColor: CHART_COLORS.text,
-      fontFamily: "Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      fontFamily: "'Sofia Sans', Inter, Arial, sans-serif",
       fontSize: 11,
       attributionLogo: true,
       panes: { separatorColor: CHART_COLORS.grid, separatorHoverColor: "rgba(93, 214, 181, 0.25)", enableResize: false },

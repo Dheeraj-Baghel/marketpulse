@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  CHART_RANGES,
   formatInr,
   formatSessionDate,
   minusMonths,
@@ -97,12 +98,33 @@ describe("ranges", () => {
     assert.equal(sliceRange(data, "1Y").candles.length, 5);
     assert.equal(sliceRange(data, "ALL").candles.length, 5);
     assert.deepEqual(sliceRange([], "1M"), { candles: [], from: null, to: null });
+    assert.deepEqual(sliceRange([], "1D"), { candles: [], from: null, to: null });
+  });
+
+  test("ranges offer 1D/2D/7D day filters and no hour filters", () => {
+    assert.deepEqual([...CHART_RANGES], ["1D", "2D", "7D", "1M", "3M", "6M", "1Y", "ALL"]);
+  });
+
+  test("1D/2D/7D are the latest N stored trading sessions, skipping weekends and holidays", () => {
+    // Fri 16 Oct, then a long weekend: Mon 19 Oct holiday (absent), Tue 20, Wed 21.
+    const data = days(["2026-10-08", "2026-10-09", "2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-20", "2026-10-21"]);
+    assert.deepEqual(sliceRange(data, "1D"), { candles: data.slice(-1), from: "2026-10-21", to: "2026-10-21" });
+    assert.deepEqual(sliceRange(data, "2D").candles.map((x) => x.time), ["2026-10-20", "2026-10-21"]);
+    const week = sliceRange(data, "7D");
+    assert.deepEqual(week.candles.map((x) => x.time), ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-20", "2026-10-21"]);
+    assert.equal(week.from, "2026-10-12");
+    assert.equal(week.to, "2026-10-21");
+    // Never invents sessions when fewer are stored.
+    assert.deepEqual(sliceRange(days(["2026-10-21"]), "7D").candles.map((x) => x.time), ["2026-10-21"]);
   });
 
   test("rangeAvailability flags windows longer than the stored history", () => {
     // ~1 year of sessions starting 2025-10-23, last 2026-10-21 (mirrors the real imported coverage)
     const data = days(["2025-10-23", "2026-01-02", "2026-06-01", "2026-09-22", "2026-10-21"]);
     const r = rangeAvailability(data);
+    assert.deepEqual(r["1D"], { available: true, covered: true, sessions: 1 });
+    assert.deepEqual(r["2D"], { available: true, covered: true, sessions: 2 });
+    assert.deepEqual(r["7D"], { available: true, covered: false, sessions: 5 }); // only 5 sessions stored
     assert.equal(r["1M"].covered, true);
     assert.equal(r["6M"].covered, true);
     assert.equal(r["1Y"].covered, true); // cutoff 2025-10-21 is 2 days before the first session
@@ -110,6 +132,7 @@ describe("ranges", () => {
     assert.equal(short["1Y"].covered, false);
     assert.equal(short["1Y"].available, true);
     assert.equal(short["1M"].covered, true);
+    assert.deepEqual(rangeAvailability([])["1D"], { available: false, covered: false, sessions: 0 });
   });
 });
 

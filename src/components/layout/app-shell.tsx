@@ -1,80 +1,37 @@
-import { LayoutDashboard } from "lucide-react";
+import { Activity, ArrowUpRight, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { isPublicPreview } from "@/lib/public-preview";
 
-/**
- * Application frame: fixed sidebar on desktop, compact top bar on tablet/mobile.
- * Navigation is intentionally limited to the pages that exist in Stage 1.
- */
+/** Floating editorial navigation. Only real routes are offered, at every size. */
 export function AppShell({ active, children }: { active: "dashboard" | null; children: ReactNode }) {
+  const preview = isPublicPreview();
   return (
-    <div className="min-h-dvh lg:pl-[220px]">
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-accent focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-bg"
-      >
-        Skip to content
-      </a>
-
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[220px] flex-col border-r border-line bg-sidebar lg:flex">
-        <Brand className="h-14 border-b border-line px-5" />
-        <nav aria-label="Primary" className="flex-1 px-3 py-4">
-          <p className="px-2 pb-2 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-fg-muted/70">Research</p>
-          <NavLink href="/" active={active === "dashboard"} />
-        </nav>
-        <div className="border-t border-line px-5 py-4 text-[11px] leading-relaxed text-fg-muted/80">
-          Directory data: NSE &ldquo;Securities available for trading&rdquo; files, imported locally.
-        </div>
-      </aside>
-
-      <header className="sticky top-0 z-30 flex h-12 items-center justify-between gap-3 border-b border-line bg-sidebar/95 px-4 backdrop-blur lg:hidden">
-        <Brand />
-        <nav aria-label="Primary">
-          <NavLink href="/" active={active === "dashboard"} compact />
+    <div className="min-h-dvh pt-6">
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-6 focus:top-6 focus:z-50 focus:rounded-full focus:bg-accent focus:px-6 focus:py-3 focus:text-bg">Skip to content</a>
+      <header className="mp-nav relative z-30 mx-auto flex max-w-[1280px] items-center justify-between gap-4 rounded-full bg-white px-6 py-4 sm:px-10">
+        <Link href="/" className="flex min-h-11 items-center gap-3 rounded-full focus-visible:outline-2 focus-visible:outline-offset-4">
+          <span aria-hidden="true" className="grid size-11 place-items-center rounded-full bg-fg text-bg"><Activity className="size-6" /></span>
+          <span className="text-xl font-medium tracking-[-0.04em]">MarketPulse<span className="text-[#cf4500]">.</span></span>
+        </Link>
+        <nav aria-label="Primary" className="flex items-center gap-8">
+          <span className="hidden text-sm text-fg-muted md:block">Independent thinking. Informed research.</span>
+          <Link href="/" aria-current={active === "dashboard" ? "page" : undefined} className="flex min-h-11 items-center gap-2 rounded-full border border-line px-4 text-sm font-medium hover:bg-bg focus-visible:outline-2 focus-visible:outline-offset-4"><LayoutDashboard className="size-4" aria-hidden="true" /><span>Dashboard</span></Link>
         </nav>
       </header>
-
       {children}
+      <footer className="mp-footer mt-16 bg-[#141413] px-6 py-16 text-[#f3f0ee] sm:px-12">
+        <div className="mx-auto max-w-[1280px]">
+          <p className="mp-eyebrow text-[#d1cdc7]">Research with perspective</p>
+          <h2 className="mt-4 max-w-xl text-4xl font-medium leading-tight tracking-[-0.02em]">A clearer view starts with better questions.</h2>
+          <div className="mt-10 grid gap-8 border-t border-white/20 pt-8 md:grid-cols-3">
+            <div><h3 className="text-sm font-medium">Your workspace</h3><Link href="/" className="mt-3 inline-flex min-h-11 items-center gap-2 text-sm text-white/80">{preview ? "Public preview" : "Company directory"} <ArrowUpRight className="size-4" aria-hidden="true" /></Link></div>
+            <div><h3 className="text-sm font-medium">Know your sources</h3><p className="mt-3 text-sm leading-relaxed text-white/70">{preview ? "No market data or news is served on this public preview. Data services remain disabled pending public-display licensing." : "Official NSE directory, historical EOD candles and separately labelled delayed quotes. Never presented as live data."}</p></div>
+            <div><h3 className="text-sm font-medium">Keep your perspective</h3><p className="mt-3 text-sm leading-relaxed text-white/70">Personal, non-commercial research. Not investment advice. Verify source timestamps before making decisions.</p></div>
+          </div>
+          <p className="mt-12 border-t border-white/20 pt-6 text-xs text-white/60">MarketPulse · NSE equity research workspace</p>
+        </div>
+      </footer>
     </div>
-  );
-}
-
-function Brand({ className }: { className?: string }) {
-  return (
-    <Link href="/" className={cn("flex items-center gap-2.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2", className)}>
-      <Mark />
-      <span className="text-[15px] font-semibold tracking-tight text-fg">
-        Market<span className="text-accent">Pulse</span>
-      </span>
-    </Link>
-  );
-}
-
-/** Static logomark (a pulse line), not a data visualisation. */
-function Mark() {
-  return (
-    <span aria-hidden="true" className="grid size-7 place-items-center rounded-md border border-accent/30 bg-accent/10">
-      <svg viewBox="0 0 20 20" className="size-4 text-accent" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M2 11h3.5l2-5 3.5 9 2.5-6H18" />
-      </svg>
-    </span>
-  );
-}
-
-function NavLink({ href, active, compact = false }: { href: string; active: boolean; compact?: boolean }) {
-  return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "flex items-center gap-2.5 rounded-md text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2",
-        compact ? "h-8 px-2.5" : "h-9 px-2.5",
-        active ? "bg-panel text-fg shadow-[inset_2px_0_0_var(--color-accent)]" : "text-fg-muted hover:bg-panel/60 hover:text-fg",
-      )}
-    >
-      <LayoutDashboard className={cn("size-4", active ? "text-accent" : "")} aria-hidden="true" />
-      Dashboard
-    </Link>
   );
 }

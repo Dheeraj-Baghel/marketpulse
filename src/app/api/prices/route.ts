@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { errorResponse } from "@/lib/market-data/http";
 import { getMarketDataProviders } from "@/lib/market-data/provider";
 import { getPrices, parsePriceQuery } from "@/lib/market-data/price-service";
+import { publicPreviewResponse } from "@/lib/public-preview-response";
 
 /**
  * GET /api/prices?symbol=RELIANCE&series=EQ&range=1Y[&refresh=1][&source=auto|nse-mcp|local-csv (dev only)]
@@ -15,6 +16,8 @@ import { getPrices, parsePriceQuery } from "@/lib/market-data/price-service";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  const preview = publicPreviewResponse();
+  if (preview) return preview;
   try {
     const query = parsePriceQuery(request.nextUrl.searchParams);
     const p = getMarketDataProviders();

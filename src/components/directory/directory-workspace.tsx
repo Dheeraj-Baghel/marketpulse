@@ -121,7 +121,7 @@ export function DirectoryWorkspace({ page, query, segment, initialSelected, quot
         )}
       </section>
 
-      <div ref={panelRef} className="min-w-0 scroll-mt-16 lg:sticky lg:top-[4.5rem] lg:flex lg:h-[calc(100dvh-5.5rem)] lg:min-h-[36rem] lg:flex-col [&>section]:lg:flex-1">
+      <div ref={panelRef} className="min-w-0 scroll-mt-8 lg:sticky lg:top-6 lg:flex lg:h-[calc(100dvh-3rem)] lg:min-h-[40rem] lg:flex-col [&>section]:lg:flex-1">
         <SelectedCompanyPanel row={selectedRow} range={chartRange} onRangeChange={setChartRange} mode={chartMode} onModeChange={setChartMode} quotes={quotes} />
       </div>
     </div>

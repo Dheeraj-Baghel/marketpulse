@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getMarketDataProviders } from "@/lib/market-data/provider";
+import { isPublicPreview } from "@/lib/public-preview";
 
 /**
  * GET /api/market-data/status — provider health for diagnostics.
@@ -12,6 +13,7 @@ export async function GET() {
   const p = getMarketDataProviders();
   return NextResponse.json(
     {
+      publicPreview: isPublicPreview(),
       mcpEnabled: p.config.mcpEnabled,
       configErrors: p.config.configErrors,
       servers: p.mcp.health(),

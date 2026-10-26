@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.next*/
 next-env.d.ts
 *.tsbuildinfo
 .env*.local
@@ -14,3 +15,13 @@ data/backups/
 .next-build/
 .next-e2e-mcp/
 artifacts/local-only/
+
+# Publishing must not include user data or operator secrets (case-independent).
+data/
+.env
+.env.*
+!.env.example
+.vercel/
+artifacts/
+*.pem
+*.key

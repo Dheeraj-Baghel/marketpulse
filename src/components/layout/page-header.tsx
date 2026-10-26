@@ -1,16 +1,24 @@
 import type { ReactNode } from "react";
 
-/** Page title row with optional search and status slots; wraps on narrow screens. */
+/** Editorial introduction, followed by the existing functional search/status. */
 export function PageHeader({ title, subtitle, search, status }: { title: string; subtitle?: string; search?: ReactNode; status?: ReactNode }) {
+  const dashboard = title === "Dashboard";
   return (
-    <div className="border-b border-line bg-bg/90 backdrop-blur lg:sticky lg:top-0 lg:z-20">
-      <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-6 lg:h-14 lg:flex-nowrap lg:py-0">
-        <div className="mr-auto min-w-0">
-          <h1 className="text-[17px] font-semibold leading-tight tracking-tight">{title}</h1>
-          {subtitle ? <p className="text-xs text-fg-muted">{subtitle}</p> : null}
+    <div className="mp-page-header mx-auto max-w-[1280px] px-6 pb-8 pt-16 sm:px-10">
+      <div className="grid items-end gap-8 md:grid-cols-[1.4fr_1fr]">
+        <div>
+          <p className="mp-eyebrow">{dashboard ? "The research workspace" : "Company research"}</p>
+          <h1 className="mt-5 text-[40px] font-medium leading-none tracking-[-0.02em] sm:text-5xl lg:text-[64px]">{dashboard ? <>See the market.<br /><span className="text-fg-muted">Find your perspective.</span></> : title}</h1>
+          <span className="sr-only">{dashboard ? title : ""}</span>
         </div>
-        {status ? <div className="order-2 lg:order-3">{status}</div> : null}
-        {search ? <div className="order-3 w-full lg:order-2 lg:w-[26rem]">{search}</div> : null}
+        <div className="pb-1">
+          <p className="max-w-md text-base leading-relaxed text-fg-muted">{dashboard ? "Explore NSE-listed companies, follow historical price movements and put every data point in context." : subtitle}</p>
+          {dashboard && subtitle ? <p className="mt-4 text-sm font-medium">{subtitle} · Personal research</p> : null}
+        </div>
+      </div>
+      <div className="mt-10 flex flex-wrap items-center justify-between gap-4 rounded-[40px] border border-line bg-panel p-5 sm:p-6">
+        {search ? <div className="w-full md:max-w-lg">{search}</div> : null}
+        {status ? <div>{status}</div> : null}
       </div>
     </div>
   );

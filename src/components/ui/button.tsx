@@ -9,13 +9,13 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-accent text-bg hover:bg-accent/90",
-        outline: "border border-line bg-panel text-fg hover:bg-line/60",
+        outline: "border border-fg bg-white text-fg hover:bg-bg",
         ghost: "text-fg-muted hover:bg-line/50 hover:text-fg",
       },
       size: {
-        default: "h-9 px-3",
-        sm: "h-8 px-2.5 text-xs",
-        icon: "size-8",
+        default: "h-11 px-6",
+        sm: "h-11 px-4 text-xs",
+        icon: "size-11 rounded-full",
       },
     },
     defaultVariants: { variant: "default", size: "default" },

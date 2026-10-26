@@ -20,7 +20,8 @@
     "test:e2e": "tsx tests/e2e/browser.mts",
     "check": "npm run lint && npm run typecheck && npm test && npm run test:integration",
     "test:integration": "tsx --conditions=react-server --test tests/integration/*.test.ts",
-    "probe:nse-mcp": "tsx scripts/mcp-probe/discover.mts"
+    "probe:nse-mcp": "tsx scripts/mcp-probe/discover.mts",
+    "check:release": "node scripts/check-release.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

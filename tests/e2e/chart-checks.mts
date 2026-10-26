@@ -133,6 +133,8 @@ export async function runChartChecks(ctx: Ctx) {
   await check("14. OHLC readout matches stored records on hover and at rest", async () => {
     const readout = page.getByTestId("ohlc-readout");
     assert((await readout.getAttribute("data-date")) === relLast.trade_date && (await readout.getAttribute("data-hovering")) === "false", "rest state should be the latest session");
+    // The editorial header places the chart below the fold at 900px; hover needs it on screen.
+    await page.getByTestId("price-chart-canvas").scrollIntoViewIfNeeded();
     const box = (await page.getByTestId("price-chart-canvas").boundingBox())!;
     let matched = 0;
     for (const fx of [0.2, 0.45, 0.7]) {
@@ -193,7 +195,7 @@ export async function runChartChecks(ctx: Ctx) {
     return `line = ${line.line.length} closing prices; candles identical after round trip`;
   });
 
-  await check("18. Timeframes 1M/3M/6M/1Y/ALL use only stored dates", async () => {
+  await check("18. Timeframes 1D/2D/7D/1M/3M/6M/1Y/ALL use only stored dates", async () => {
     const last = tcs.at(-1)!.trade_date;
     const minus = (iso: string, months: number) => {
       const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
@@ -204,6 +206,21 @@ export async function runChartChecks(ctx: Ctx) {
       return `${ty}-${String(tm).padStart(2, "0")}-${String(Math.min(d, ld)).padStart(2, "0")}`;
     };
     const out: string[] = [];
+    const offered = await page.getByRole("group", { name: "Time range" }).getByRole("button").allInnerTexts();
+    assert(offered.join(",") === "1D,2D,7D,1M,3M,6M,1Y,ALL", `range buttons: ${offered.join(",")}`);
+    // Day filters are the latest N stored trading sessions of daily EOD data.
+    for (const [label, sessions] of [["1D", 1], ["2D", 2], ["7D", 7]] as const) {
+      await page.getByRole("button", { name: label, exact: true }).click();
+      await page.waitForFunction((l) => [...((window as ProbeWindow).__mpCharts?.values() ?? [])][0]?.dataKey.endsWith(`|${l}`), label);
+      const s = (await chartState(page))[0]!;
+      const expected = tcs.slice(-sessions);
+      assert(
+        s.candles.length === sessions && s.candles.every((c, i) => c.time === expected[i]!.trade_date && Math.round(c.close * SCALE) === expected[i]!.close),
+        `${label}: plotted ${s.candles.map((c) => c.time).join(",")}`,
+      );
+      assert((await page.getByTestId("session-range-note").innerText()).includes("daily EOD data, not intraday"), `${label}: session note`);
+      out.push(`${label}=${s.candles.length}`);
+    }
     for (const [label, months] of [["1M", 1], ["3M", 3], ["6M", 6], ["1Y", 12], ["ALL", 0]] as const) {
       await page.getByRole("button", { name: label, exact: true }).click();
       await page.waitForFunction((l) => [...((window as ProbeWindow).__mpCharts?.values() ?? [])][0]?.dataKey.endsWith(`|${l}`), label);
@@ -214,7 +231,9 @@ export async function runChartChecks(ctx: Ctx) {
     }
     const footer = await page.getByTestId("chart-footer").innerText();
     assert(/Stored history: 23 Oct 2025 – 21 Oct 2026 \(246 sessions\)/.test(footer) || /Stored history:/.test(footer), "footer coverage");
-    assert(!/5Y|5 years/i.test(await page.getByTestId("stock-price-chart").innerText()), "must not offer/label 5Y");
+    const chartText = await page.getByTestId("stock-price-chart").innerText();
+    assert(!/5Y|5 years/i.test(chartText), "must not offer/label 5Y");
+    assert(!/\b[135]H\b/.test(chartText), "hour filters must not be offered");
     return `${out.join(", ")} sessions (stored ${tcs[0]!.trade_date}..${last}); footer states real coverage`;
   });
 
@@ -222,6 +241,7 @@ export async function runChartChecks(ctx: Ctx) {
     await page.getByRole("button", { name: "1Y", exact: true }).click();
     await page.waitForFunction(() => [...((window as ProbeWindow).__mpCharts?.values() ?? [])][0]?.dataKey.endsWith("|1Y"));
     await page.waitForTimeout(300);
+    await page.getByTestId("price-chart-canvas").scrollIntoViewIfNeeded();
     const box = (await page.getByTestId("price-chart-canvas").boundingBox())!;
     const initial = (await chartState(page))[0]!.range!;
     await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.4);
@@ -346,7 +366,7 @@ export async function runChartChecks(ctx: Ctx) {
     await waitReady(page, "RELIANCE");
     const s = (await chartState(page))[0]!;
     assert(s.dataKey === "RELIANCE|EQ|1Y", s.dataKey);
-    for (const t of ["Recent company news", "Annual report", "AI insights", "INE002A01018"]) assert(await page.getByText(t).first().isVisible(), `missing ${t}`);
+    for (const t of ["Recent News", "Annual report", "AI insights", "INE002A01018"]) assert(await page.getByText(t).first().isVisible(), `missing ${t}`);
     await page.mouse.move(0, 0);
     await page.screenshot({ caret: "initial", path: path.join(shots, "18-company-chart-page.png"), fullPage: true });
     const noData = await page.goto(`${base}/stocks/INFY`);

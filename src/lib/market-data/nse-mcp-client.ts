@@ -2,6 +2,7 @@ import "server-only";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { isPublicPreview, PUBLIC_PREVIEW_MESSAGE } from "../public-preview";
 
 /**
  * Minimal, server-only client for NSE's two official MCP servers
@@ -78,6 +79,10 @@ export function readMcpConfig(env: NodeJS.ProcessEnv = process.env): McpConfig &
   const source = (env.MARKET_DATA_SOURCE ?? "nse-mcp").trim().toLowerCase();
   const flag = (env.ENABLE_NSE_MCP ?? "true").trim().toLowerCase();
   let enabled = source === "nse-mcp" && !["false", "0", "off", "no"].includes(flag);
+  if (isPublicPreview(env)) {
+    enabled = false;
+    configErrors.push(PUBLIC_PREVIEW_MESSAGE);
+  }
   const urls = {} as Record<NseServer, string>;
   for (const [server, spec] of Object.entries(NSE_MCP_SERVERS) as [NseServer, (typeof NSE_MCP_SERVERS)[NseServer]][]) {
     const key = server === "bhavcopy" ? "NSE_BHAVCOPY_MCP_URL" : "NSE_CM_MARKET_MCP_URL";

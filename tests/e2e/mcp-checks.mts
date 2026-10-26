@@ -233,7 +233,7 @@ export async function runMcpChecks(ctx: Ctx) {
     await waitChart(page, "TCS");
     await waitQuote(page, "TCS");
     assert((await page.getByTestId("source-badge").getAttribute("data-source")) === "nse-bhavcopy-mcp", "details source");
-    for (const t of ["Recent company news", "Annual report", "AI insights"]) assert(await page.getByText(t).first().isVisible(), `missing ${t}`);
+    for (const t of ["Recent News", "Annual report", "AI insights"]) assert(await page.getByText(t).first().isVisible(), `missing ${t}`);
     const m = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
     const mp = await m.newPage();
     mp.setDefaultTimeout(120_000);

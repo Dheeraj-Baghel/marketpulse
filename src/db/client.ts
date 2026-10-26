@@ -4,13 +4,18 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import fs from "node:fs";
 import path from "node:path";
 import * as schema from "./schema";
+import { isPublicPreview } from "../lib/public-preview";
 
 /**
  * Single local SQLite file. Override with MARKETPULSE_DB_PATH (used by tests to
  * point at a throwaway database). Paths are resolved from the project root.
  */
 export function resolveDbPath(): string {
-  return path.resolve(process.cwd(), process.env.MARKETPULSE_DB_PATH ?? "data/marketpulse.sqlite");
+  // Never read user-imported data on the unlicensed public preview, even when
+  // MARKETPULSE_DB_PATH points at a real local file. No serverless disk writes.
+  if (isPublicPreview()) return ":memory:";
+  // Local-only path: do not let Next trace the entire workspace/user database.
+  return path.resolve(/*turbopackIgnore: true*/ process.cwd(), process.env.MARKETPULSE_DB_PATH ?? "data/marketpulse.sqlite");
 }
 
 export type Db = BetterSQLite3Database<typeof schema>;
@@ -27,7 +32,7 @@ export function getDb(): Db {
   const cached = globalForDb.__marketpulseDb;
   if (cached && cached.path === dbPath) return cached.db;
 
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  if (dbPath !== ":memory:") fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const sqlite = new Database(dbPath);
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");

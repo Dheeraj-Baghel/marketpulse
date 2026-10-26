@@ -17,6 +17,26 @@ import { memo, useEffect, useRef } from "react";
 import { timeToIso, type ChartCandle, type ChartMode } from "@/lib/charts/candles";
 import { baseChartOptions, CHART_COLORS, pricePriceFormat, volumePriceFormat } from "./chart-options";
 
+/**
+ * Short windows (1D/2D/7D, or a newly listed security) would otherwise be
+ * stretched edge to edge: one daily candle would fill half the chart. Fewer
+ * candles than this are centred in a window of this many bar slots instead.
+ */
+const MIN_VISIBLE_SLOTS = 15;
+
+function fitView(chart: IChartApi, count: number) {
+  const timeScale = chart.timeScale();
+  if (count > 0 && count < MIN_VISIBLE_SLOTS) {
+    const pad = (MIN_VISIBLE_SLOTS - count) / 2;
+    // Fixed edges would pin sparse candles to the right edge; release them for this view only.
+    timeScale.applyOptions({ fixLeftEdge: false, fixRightEdge: false });
+    timeScale.setVisibleLogicalRange({ from: -pad, to: count - 1 + pad });
+    return;
+  }
+  timeScale.applyOptions({ fixLeftEdge: true, fixRightEdge: true });
+  timeScale.fitContent();
+}
+
 interface Props {
   /** Already validated, ascending, de-duplicated candles for ONE security and range. */
   candles: ChartCandle[];
@@ -67,6 +87,7 @@ function PriceChartCanvas({ candles, dataKey, mode, showVolume, resetToken, onHo
   const volumeRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const hoverRef = useRef(onHover);
   const lastKeyRef = useRef<string | null>(null);
+  const countRef = useRef(0);
   /**
    * True while the view should track "fit all candles". autoSize measures the
    * container asynchronously (ResizeObserver), so a fit done at setData time
@@ -85,7 +106,7 @@ function PriceChartCanvas({ candles, dataKey, mode, showVolume, resetToken, onHo
     const chart = createChart(container, baseChartOptions());
     chartRef.current = chart;
 
-    const fit = () => chart.timeScale().fitContent();
+    const fit = () => fitView(chart, countRef.current);
     let frame = 0;
     const resizeObserver = new ResizeObserver(() => {
       if (!autoFitRef.current) return; // user's zoom/pan is kept (lockVisibleTimeRangeOnResize)
@@ -165,8 +186,10 @@ function PriceChartCanvas({ candles, dataKey, mode, showVolume, resetToken, onHo
     const lineData: LineData<Time>[] = candles.map((c) => ({ time: c.time, value: c.close }));
     candleSeries.setData(candleData);
     lineSeries.setData(lineData);
+    countRef.current = candles.length;
     candleSeries.applyOptions({ visible: mode === "candles" });
-    lineSeries.applyOptions({ visible: mode === "line" });
+    // A one-point line draws nothing; markers keep 1D/2D/7D close prices visible.
+    lineSeries.applyOptions({ visible: mode === "line", pointMarkersVisible: candles.length < MIN_VISIBLE_SLOTS });
 
     // Volume lives in its own pane (v5 panes API), created/removed on demand so a
     // security without volume shows no empty pane. Missing volumes stay gaps, never 0.
@@ -194,7 +217,7 @@ function PriceChartCanvas({ candles, dataKey, mode, showVolume, resetToken, onHo
     if (lastKeyRef.current !== dataKey) {
       lastKeyRef.current = dataKey;
       autoFitRef.current = true;
-      chart.timeScale().fitContent();
+      fitView(chart, candles.length);
     }
     const probe = registry().get(chart);
     if (probe) {
@@ -208,7 +231,7 @@ function PriceChartCanvas({ candles, dataKey, mode, showVolume, resetToken, onHo
     const chart = chartRef.current;
     if (!chart || resetToken === 0) return;
     autoFitRef.current = true;
-    chart.timeScale().fitContent();
+    fitView(chart, countRef.current);
     chart.priceScale("right").applyOptions({ autoScale: true });
   }, [resetToken]);
 

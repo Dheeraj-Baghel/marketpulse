@@ -11,8 +11,14 @@
  * plain JSON numbers (e.g. 1450.05).
  */
 
-export const CHART_RANGES = ["1M", "3M", "6M", "1Y", "ALL"] as const;
+export const CHART_RANGES = ["1D", "2D", "7D", "1M", "3M", "6M", "1Y", "ALL"] as const;
 export type ChartRange = (typeof CHART_RANGES)[number];
+/**
+ * Day filters count stored NSE trading sessions, not calendar days. Weekends
+ * and exchange holidays therefore never produce a misleading empty chart.
+ */
+export const SESSION_CHART_RANGES = ["1D", "2D", "7D"] as const;
+export type SessionChartRange = (typeof SESSION_CHART_RANGES)[number];
 export type ChartMode = "candles" | "line";
 
 export interface ChartCandle {
@@ -178,16 +184,26 @@ export function minusMonths(iso: string, months: number): string {
   return `${String(ty).padStart(4, "0")}-${String(tm).padStart(2, "0")}-${String(Math.min(d, lastDay)).padStart(2, "0")}`;
 }
 
-const RANGE_MONTHS: Record<Exclude<ChartRange, "ALL">, number> = { "1M": 1, "3M": 3, "6M": 6, "1Y": 12 };
+const RANGE_MONTHS: Record<Exclude<ChartRange, "ALL" | SessionChartRange>, number> = { "1M": 1, "3M": 3, "6M": 6, "1Y": 12 };
+export const RANGE_SESSIONS: Record<SessionChartRange, number> = { "1D": 1, "2D": 2, "7D": 7 };
+
+export function isSessionChartRange(range: ChartRange): range is SessionChartRange {
+  return (SESSION_CHART_RANGES as readonly string[]).includes(range);
+}
 
 /**
- * Candles for a range, anchored on the latest stored session (same rule as the
- * Stage 2A API: 1M ending 2026-10-21 starts after 2026-09-21). Never extends
- * or fills data; may legitimately return an empty array.
+ * Candles for a range, anchored on the latest stored session. Day ranges are
+ * the latest N stored daily sessions (1D = latest daily candle, not intraday).
+ * Month ranges follow the Stage 2A API rule: 1M ending 2026-10-21 starts after
+ * 2026-09-21. Never extends or fills data; may legitimately return an empty array.
  */
 export function sliceRange(candles: ChartCandle[], range: ChartRange): { candles: ChartCandle[]; from: string | null; to: string | null } {
   const last = candles.at(-1);
   if (!last) return { candles: [], from: null, to: null };
+  if (isSessionChartRange(range)) {
+    const inRange = candles.slice(-RANGE_SESSIONS[range]);
+    return { candles: inRange, from: inRange[0]!.time, to: last.time };
+  }
   if (range === "ALL") return { candles, from: candles[0]!.time, to: last.time };
   const cutoff = minusMonths(last.time, RANGE_MONTHS[range]);
   const inRange = candles.filter((c) => c.time > cutoff);
@@ -199,8 +215,9 @@ export interface RangeInfo {
   available: boolean;
   /**
    * Stored history reaches the start of the window. False means the window
-   * shows less history than its label (e.g. "1Y" with only 7 months held);
-   * the UI then says so instead of implying a full period.
+   * shows less history than its label (e.g. "1Y" with only 7 months held, or
+   * "7D" with only 4 sessions); the UI then says so instead of implying a
+   * full period.
    */
   covered: boolean;
   sessions: number;
@@ -215,8 +232,11 @@ export function rangeAvailability(candles: ChartCandle[]): Record<ChartRange, Ra
     // The first stored day only proves coverage if it is on/before the window's
     // exclusive cutoff; a cutoff that falls on a weekend/holiday right before
     // the first stored session is treated as covered within 4 calendar days.
-    const covered =
-      r === "ALL" || !first || !last ? sessions > 0 : first <= addDays(minusMonths(last, RANGE_MONTHS[r]), 4);
+    const covered = isSessionChartRange(r)
+      ? sessions === RANGE_SESSIONS[r]
+      : r === "ALL" || !first || !last
+        ? sessions > 0
+        : first <= addDays(minusMonths(last, RANGE_MONTHS[r]), 4);
     out[r] = { available: sessions > 0, covered: sessions > 0 && covered, sessions };
   }
   return out;
