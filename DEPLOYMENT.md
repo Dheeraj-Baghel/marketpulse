@@ -3,6 +3,18 @@
 **Live:** https://marketpulse-softtech10.vercel.app
 **Private source:** https://github.com/Dheeraj-Baghel/marketpulse
 
+## Latest correction — reported AARTIIND chart failure
+
+See [chart-recovery verification](CHART_RECOVERY.md). The normal hosted data
+connection remains enabled. Initial chart loading is now recent-first (3M),
+with range-driven extension and bounded proxy/session recovery. Every validated
+chunk survives older-range failure, no-fallback outages return typed retryable
+errors rather than empty successes, and the chart keeps existing data visible.
+Only ALL requests MAX; a complete **server** cache is not confused with a sliced
+client response. **104 unit tests**, five native synthetic recovery workflows and
+five real hosted AARTIIND/AARTIDRUGS/phone workflows pass. No new provider key,
+substitute feed or data snapshot change was needed.
+
 ## Current decision and delivered behavior
 
 On 26 October 2026, after rejecting the data-disabled preview and browser-import

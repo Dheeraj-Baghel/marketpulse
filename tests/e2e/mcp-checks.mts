@@ -189,6 +189,12 @@ export async function runMcpChecks(ctx: Ctx) {
       await waitChart(p2, "RELIANCE");
     }
     await p2.locator("[data-testid=delayed-quote]:not([data-status=loading])").waitFor();
+    // Faster chart loading may leave the quote legitimately fresh within its
+    // TTL. Explicitly refresh it to test an outage rather than waiting out TTL.
+    if (await p2.getByTestId("delayed-quote").getAttribute("data-status") === "ready") {
+      await p2.getByRole("button", { name: "Refresh RELIANCE delayed quote", exact: true }).click();
+      await p2.waitForFunction(() => ["stale", "error"].includes(document.querySelector('[data-testid="delayed-quote"]')?.getAttribute("data-status") ?? ""));
+    }
     const qs = await p2.getByTestId("delayed-quote").getAttribute("data-status");
     assert(qs === "stale" || qs === "error", `quote state ${qs}`);
     if (qs === "stale") assert(/CACHED — STALE/.test(await p2.getByTestId("quote-source").innerText()), "stale label");

@@ -2,6 +2,19 @@
 
 A personal NSE stock research workspace.
 
+## AARTIIND chart loading fixed — 26 October 2026
+
+The user's real hosted failure was reproduced. Charts now paint recent NSE
+candles first, then extend the selected range; only ALL asks for MAX. Bounded
+session/proxy recovery, per-chunk preservation and truthful error/Retry states
+replace the old empty-success outage path. An older-chunk failure cannot blank
+accepted candles, and a sliced response from a complete server cache is not
+mistaken for full client history. AARTIIND and AARTIDRUGS were tested with real
+NSE data on the public site, including a fresh phone-sized AARTIIND session.
+**104 units, 5 synthetic recovery workflows and 5 real hosted stock workflows
+pass.** Longer ALL requests can still show a partial-history warning with Retry;
+NSE uptime is not guaranteed. See [reproduction, fix and evidence](CHART_RECOVERY.md).
+
 ## Working real-data website — 26 October 2026
 
 **[Open MarketPulse](https://marketpulse-softtech10.vercel.app)** — now connected

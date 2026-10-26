@@ -167,6 +167,11 @@ export async function runChartChecks(ctx: Ctx) {
     await searchFor(page, "TCS");
     await selectRow(page, "TCS");
     await waitReady(page, "TCS");
+    // The first ready canvas is intentionally the recent window. Wait until
+    // its selected 6M extension settles before comparing two chart types.
+    await page.waitForFunction(() => !document.querySelector('[data-testid="history-extending"]'));
+    const expected = await (await fetch(`${base}/api/prices?symbol=TCS&series=EQ&range=6M`)).json() as { count: number };
+    await page.waitForFunction(count => [...((window as ProbeWindow).__mpCharts?.values() ?? [])][0]?.candles().length === count, expected.count);
     const states = await chartState(page);
     assert(states.length === 1, `${states.length} chart instances alive`);
     const s = states[0]!;
