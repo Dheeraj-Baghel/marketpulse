@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PriceResponseError, validatePriceResponse, type ValidatedSeries } from "@/lib/charts/candles";
+import { PriceResponseError, validatePriceResponse, type ValidatedSeries, type ChartRange } from "@/lib/charts/candles";
+import { historyApiRange, historyCovers, mergeLoadedHistory, HISTORY_DEPTH, type HistoryApiRange } from "@/lib/charts/history-loading";
 
 /**
  * Loads the full stored daily history for ONE security from the Stage 2A
@@ -42,24 +43,30 @@ export interface SecurityKey {
 export const REQUEST_TIMEOUT_MS = 45_000;
 const CACHE_LIMIT = 24;
 /** Successful results only; errors are never cached. Cleared on page reload. */
-const cache = new Map<string, ValidatedSeries>();
+const cache = new Map<string, { data: ValidatedSeries; depth: number; expires: number }>();
 
 export function securityKey(s: SecurityKey): string {
   return `${s.symbol}|${s.series}`;
 }
 
-function cacheGet(key: string): ValidatedSeries | undefined {
-  return cache.get(key);
+function cacheGet(key: string) {
+  const entry = cache.get(key);
+  if (entry && entry.expires <= Date.now()) { cache.delete(key); return undefined; }
+  return entry;
 }
 
-function cacheSet(key: string, value: ValidatedSeries) {
+function cacheSet(key: string, value: ValidatedSeries, range: HistoryApiRange) {
+  const previous = cacheGet(key);
+  const data = mergeLoadedHistory(previous?.data, value);
+  const depth = data.meta.provider?.loadWarning ? (previous?.depth ?? 0) : Math.max(previous?.depth ?? 0, HISTORY_DEPTH[range]);
   cache.delete(key);
-  cache.set(key, value);
+  cache.set(key, { data, depth, expires: Date.now() + (data.candles.length ? 5 * 60_000 : 30_000) });
   while (cache.size > CACHE_LIMIT) {
     const oldest = cache.keys().next().value;
     if (oldest === undefined) break;
     cache.delete(oldest);
   }
+  return data;
 }
 
 class HttpError extends Error {
@@ -72,8 +79,8 @@ class HttpError extends Error {
   }
 }
 
-async function fetchHistory(security: SecurityKey, signal: AbortSignal, refresh: boolean): Promise<ValidatedSeries> {
-  const qs = new URLSearchParams({ symbol: security.symbol, series: security.series, range: "MAX" });
+async function fetchHistory(security: SecurityKey, signal: AbortSignal, refresh: boolean, range: HistoryApiRange): Promise<ValidatedSeries> {
+  const qs = new URLSearchParams({ symbol: security.symbol, series: security.series, range });
   if (refresh) qs.set("refresh", "1");
   const response = await fetch(`/api/prices?${qs}`, { signal, cache: "no-store", headers: { Accept: "application/json" } });
   let body: unknown = null;
@@ -86,12 +93,18 @@ async function fetchHistory(security: SecurityKey, signal: AbortSignal, refresh:
     const err = (body as { error?: { code?: string; message?: string } } | null)?.error;
     throw new HttpError(response.status, err?.code ?? null, err?.message ?? `HTTP ${response.status}`);
   }
-  return validatePriceResponse(body, security);
+  const data = validatePriceResponse(body, security);
+  // Also reject old-deployment HTTP 200 "empty" outage envelopes. Never cache
+  // an upstream failure as proof that there is no historical data.
+  if (!data.candles.length && data.meta.fallbackReason && !["NOT_FOUND", "SERIES_MISMATCH", "DISABLED", "OVERRIDE"].includes(data.meta.fallbackReason.code)) {
+    throw new HttpError(502, `PROVIDER_${data.meta.fallbackReason.code}`, data.meta.fallbackReason.message);
+  }
+  return data;
 }
 
 function classify(error: unknown, timedOut: boolean): ChartError {
   if (timedOut) {
-    return { kind: "timeout", title: "Price data took too long to load", message: `No response from the local price service within ${REQUEST_TIMEOUT_MS / 1000} seconds.`, retryable: true };
+    return { kind: "timeout", title: "Price data took too long to load", message: `The price service did not finish within ${REQUEST_TIMEOUT_MS / 1000} seconds. Retry the request; any verified candles remain visible.`, retryable: true };
   }
   if (error instanceof PriceResponseError) {
     return { kind: "invalid-response", title: "Price data failed validation", message: error.message, retryable: true };
@@ -118,80 +131,83 @@ function classify(error: unknown, timedOut: boolean): ChartError {
   };
 }
 
-type Stored = { key: string; attempt: number } & (
+type Stored = { requestId: string } & (
   | { status: "ready" | "empty"; data: ValidatedSeries; error: null }
   | { status: "error"; data: null; error: ChartError }
 );
 
-/**
- * @param security  selected security, or null for none
- * @param initial   optional server-provided, already validated history for `security` (details page)
- */
-export function usePriceHistory(security: SecurityKey | null, initial?: { key: string; data: ValidatedSeries } | null) {
+/** Recent candles first; extend only to the selected range. Failed extensions
+ * never hide an existing chart, and aborted/foreign responses cannot enter cache. */
+export function usePriceHistory(security: SecurityKey | null, initial?: { key: string; data: ValidatedSeries } | null, range: ChartRange = "1Y") {
   const key = security ? securityKey(security) : null;
-  /**
-   * Each attempt value is one request. `refreshFor` names the security whose
-   * current attempt is a manual refresh (bypasses client + server cache);
-   * switching to another security never inherits it.
-   */
+  const target = historyApiRange(range);
   const [req, setReq] = useState<{ attempt: number; refreshFor: string | null }>({ attempt: 0, refreshFor: null });
-  const attempt = req.attempt;
   const [stored, setStored] = useState<Stored | null>(null);
-
+  const [finished, setFinished] = useState("");
   const refreshing = req.refreshFor !== null && req.refreshFor === key;
   const seeded = initial && key === initial.key ? initial.data : undefined;
+  const requestId = `${key}|${target}|${req.attempt}`;
 
   useEffect(() => {
     if (!security || !key) return;
-    if (!refreshing && (cacheGet(key) || seeded)) return;
+    const cached = cacheGet(key);
+    if (!refreshing && cached && historyCovers(cached.data, cached.depth, target)) return;
+    if (!refreshing && !cached && seeded && historyCovers(seeded, 1, target)) return;
     const controller = new AbortController();
     let timedOut = false;
-    const timer = window.setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, REQUEST_TIMEOUT_MS);
-
-    fetchHistory(security, controller.signal, refreshing)
-      .then((data) => {
-        cacheSet(key, data);
-        if (!controller.signal.aborted) {
-          setStored({ key, attempt, status: data.candles.length > 0 ? "ready" : "empty", data, error: null });
-        }
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted && !timedOut) return; // superseded by a newer selection
-        setStored({ key, attempt, status: "error", data: null, error: classify(error, timedOut) });
-      })
-      .finally(() => window.clearTimeout(timer));
-
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
+    const timer = window.setTimeout(() => { timedOut = true; controller.abort(); }, REQUEST_TIMEOUT_MS);
+    const publish = (data: ValidatedSeries, requested: HistoryApiRange) => {
+      if (controller.signal.aborted) return;
+      const merged = cacheSet(key, data, requested);
+      setStored({ requestId, status: merged.candles.length ? "ready" : "empty", data: merged, error: null });
     };
-    // `security` is represented by `key`; `seeded` only short-circuits.
+    const load = async () => {
+      if (!cacheGet(key) && seeded) cacheSet(key, seeded, "3M");
+      if (!cacheGet(key)) {
+        // Fetch one recent chunk before any multi-year traversal. One bounded
+        // retry for transient gateway/network failures; never retry 429 here.
+        let recent: ValidatedSeries;
+        try { recent = await fetchHistory(security, controller.signal, false, "3M"); }
+        catch (error) {
+          const transient = error instanceof TypeError || (error instanceof HttpError && [502, 503].includes(error.status));
+          if (!transient || controller.signal.aborted) throw error;
+          await new Promise(resolve => setTimeout(resolve, 750));
+          recent = await fetchHistory(security, controller.signal, false, "3M");
+        }
+        publish(recent, "3M");
+      }
+      if (controller.signal.aborted) return;
+      const hit = cacheGet(key);
+      if (refreshing || !hit || !historyCovers(hit.data, hit.depth, target)) {
+        publish(await fetchHistory(security, controller.signal, refreshing, target), target);
+      }
+      if (!controller.signal.aborted) setFinished(requestId);
+    };
+    load().catch((error: unknown) => {
+      if (controller.signal.aborted && !timedOut) return;
+      setStored({ requestId, status: "error", data: null, error: classify(error, timedOut) });
+      setFinished(requestId);
+    }).finally(() => window.clearTimeout(timer));
+    return () => { window.clearTimeout(timer); controller.abort(); };
+    // Identity, requested API window and explicit retry determine this request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, attempt]);
+  }, [key, target, req.attempt]);
 
-  const retry = useCallback(() => setReq((r) => ({ attempt: r.attempt + 1, refreshFor: null })), []);
-  /** Manual refresh: re-request from the source (server cache bypassed) while keeping the current chart visible. */
-  const refresh = useCallback(() => setReq((r) => ({ attempt: r.attempt + 1, refreshFor: key })), [key]);
-
+  const retry = useCallback(() => setReq(r => ({ attempt: r.attempt + 1, refreshFor: null })), []);
+  const refresh = useCallback(() => setReq(r => ({ attempt: r.attempt + 1, refreshFor: key })), [key]);
+  const entry = key ? cacheGet(key) : undefined;
+  const hit = entry?.data ?? (stored?.requestId === requestId && stored.status !== "error" ? stored.data : undefined) ?? seeded;
+  const done = stored?.requestId === requestId ? stored : null;
   let view: PriceHistoryView;
-  const done = stored && stored.key === key && stored.attempt === attempt ? stored : null;
-  const hit = key ? (cacheGet(key) ?? seeded) : undefined;
   let refreshError: ChartError | null = null;
   if (!key) view = { status: "idle", key: null, data: null, error: null };
-  else if (done && done.status === "error" && refreshing && hit) {
-    // A failed manual refresh keeps this security's existing chart and reports the error inline.
-    view = { status: hit.candles.length > 0 ? "ready" : "empty", key, data: hit, error: null };
+  else if (done?.status === "error" && hit?.candles.length) {
+    view = { status: "ready", key, data: hit, error: null };
     refreshError = done.error;
-  } else if (done) {
-    view = done.status === "error" ? { status: "error", key, data: null, error: done.error } : { status: done.status, key, data: done.data, error: null };
-  } else if (hit) {
-    // Includes a manual refresh in flight: keep showing this security's own last data.
-    view = { status: hit.candles.length > 0 ? "ready" : "empty", key, data: hit, error: null };
-  } else view = { status: "loading", key, data: null, error: null };
-
-  const isRefreshing = Boolean(key) && refreshing && !done;
+  } else if (done?.status === "error") view = { status: "error", key, data: null, error: done.error };
+  else if (hit) view = { status: hit.candles.length ? "ready" : "empty", key, data: hit, error: null };
+  else view = { status: "loading", key, data: null, error: null };
+  const needsMore = hit && !historyCovers(hit, entry?.depth ?? 1, target);
+  const isRefreshing = Boolean(hit && (refreshing || needsMore) && finished !== requestId);
   return { view, retry, refresh, isRefreshing, refreshError };
 }

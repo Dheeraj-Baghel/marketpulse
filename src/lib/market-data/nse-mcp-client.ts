@@ -212,7 +212,9 @@ export class NseMcpClient implements McpTransportLike {
     } while (cursor);
     const s = this.state.get(server)!;
     s.toolsVerified = NSE_MCP_SERVERS[server].tools.every((t) => tools.has(t));
-    client.onclose = () => this.connections.delete(server); // reconnect lazily on next call
+    // Closing an old session must not remove a newer replacement connection.
+    const pending = this.connections.get(server);
+    client.onclose = () => { if (this.connections.get(server) === pending) this.connections.delete(server); };
     return { client, transport, tools };
   }
 
@@ -221,7 +223,7 @@ export class NseMcpClient implements McpTransportLike {
     if (!pending) {
       pending = this.connect(server);
       this.connections.set(server, pending);
-      pending.catch(() => this.connections.delete(server));
+      pending.catch(() => { if (this.connections.get(server) === pending) this.connections.delete(server); });
     }
     return pending;
   }
@@ -260,7 +262,9 @@ export class NseMcpClient implements McpTransportLike {
     }
     s.calls++;
     await this.pace(server);
-    // One transparent retry only for a stale/dropped session; never for timeouts or rate limits.
+    // One fresh-session retry for an expired session / proxy upstream failure.
+    // NSE sometimes returns JSON-RPC -32000 instead of an HTTP session error.
+    // Never retry timeouts, rate limits, symbol-not-found or validation failures.
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const conn = await this.getConnection(server);
@@ -273,9 +277,10 @@ export class NseMcpClient implements McpTransportLike {
         return json;
       } catch (error) {
         const failure = classify(error, server);
-        const sessionGone = failure.code === "UNAVAILABLE" && attempt === 0 && isSessionError(error);
+        const sessionGone = failure.code === "UNAVAILABLE" && attempt === 0 && isRecoverableMcpSession(error);
         if (sessionGone) {
           await this.drop(server);
+          await new Promise(resolve => setTimeout(resolve, 250));
           continue;
         }
         if (failure.code !== "TOOL_ERROR") {
@@ -301,13 +306,20 @@ export class NseMcpClient implements McpTransportLike {
   }
 }
 
-function isSessionError(error: unknown): boolean {
-  return error instanceof StreamableHTTPError && (error.code === 404 || error.code === 400);
+export function isRecoverableMcpSession(error: unknown): boolean {
+  if (error instanceof StreamableHTTPError) return error.code === 404 || error.code === 400;
+  if (error instanceof McpError) {
+    // SDK ConnectionClosed shares -32000 with NSE's generic proxy failures.
+    if (/rate.?limit|too many|timeout|timed out/i.test(error.message)) return false;
+    return error.code === ErrorCode.ConnectionClosed && /upstream|session|connection closed/i.test(error.message);
+  }
+  return false;
 }
 
 export function classify(error: unknown, server: NseServer): McpProviderError {
   if (error instanceof McpProviderError) return error;
   if (error instanceof McpError) {
+    if (/rate.?limit|too many/i.test(error.message)) return new McpProviderError("RATE_LIMITED", `NSE ${server} MCP rate limit reached; try again later.`, server, true);
     if (error.code === ErrorCode.RequestTimeout) return new McpProviderError("TIMEOUT", `NSE ${server} MCP did not respond in time.`, server, true);
     if (error.code === ErrorCode.ConnectionClosed) return new McpProviderError("UNAVAILABLE", `NSE ${server} MCP connection closed.`, server, true);
     return new McpProviderError("UNAVAILABLE", `NSE ${server} MCP error ${error.code}: ${error.message.slice(0, 200)}`, server, true);
@@ -345,7 +357,7 @@ export function parseToolResult(result: unknown, server: NseServer, tool: string
   return json;
 }
 
-const CLIENT_REVISION = 2; // 2 = session-tolerant fetch
+const CLIENT_REVISION = 3; // 3 = bounded proxy/session recovery + replacement-safe lifecycle
 
 // One client per server process (survives Next.js dev hot reloads).
 const g = globalThis as unknown as { __mpNseMcp?: { key: string; client: NseMcpClient } };

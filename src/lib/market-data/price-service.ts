@@ -61,6 +61,7 @@ export interface PricesResponse {
     excludedOtherSeriesRows: number;
     otherSeries: string[];
     rejectedRows: number;
+    loadWarning?: { code: string; message: string; retryable: boolean };
   } | null;
   count: number;
   candles: DailyCandle[];
@@ -297,6 +298,7 @@ export async function getPrices(query: PriceQuery, deps: PriceDeps = {}): Promis
           excludedOtherSeriesRows: h.foreignSeriesRows,
           otherSeries: h.foreignSeries,
           rejectedRows: h.rejectedRows,
+          ...(result.warning ? { loadWarning: result.warning } : {}),
         },
         count: candles.length,
         candles,
@@ -321,6 +323,9 @@ export async function getPrices(query: PriceQuery, deps: PriceDeps = {}): Promis
   const coverage = provider.coverage(match.id);
   const providerFailed = fallbackReason !== null && !["DISABLED", "OVERRIDE", "NOT_FOUND", "SERIES_MISMATCH"].includes(fallbackReason.code);
   if (!coverage.latest || !coverage.earliest) {
+    // A failed NSE request plus no local fallback is an upstream outage, not
+    // evidence that the security has no history. Let the chart offer Retry.
+    if (providerFailed && fallbackReason) throw providerRequestError(fallbackReason.code as McpFailureCode, fallbackReason.message);
     return {
       ...base,
       source: "Unavailable",

@@ -48,6 +48,7 @@ export interface PriceSeriesMeta {
     complete: boolean;
     excludedOtherSeriesRows: number;
     otherSeries: string[];
+    loadWarning?: { code: string; message: string; retryable: boolean };
   } | null;
   dataMode: "HISTORICAL_EOD";
   adjustmentStatus: "UNADJUSTED";
@@ -160,6 +161,9 @@ export function validatePriceResponse(body: unknown, expected: { symbol: string;
               complete: pv.complete === true,
               excludedOtherSeriesRows: typeof pv.excludedOtherSeriesRows === "number" ? pv.excludedOtherSeriesRows : 0,
               otherSeries: Array.isArray(pv.otherSeries) ? pv.otherSeries.filter((s): s is string => typeof s === "string") : [],
+              ...(pv.loadWarning && typeof pv.loadWarning === "object"
+                && typeof (pv.loadWarning as Record<string, unknown>).message === "string"
+                ? { loadWarning: { code: String((pv.loadWarning as Record<string, unknown>).code ?? "HISTORY_PARTIAL"), message: String((pv.loadWarning as Record<string, unknown>).message), retryable: (pv.loadWarning as Record<string, unknown>).retryable === true } } : {}),
             }
           : null,
       dataMode: "HISTORICAL_EOD",

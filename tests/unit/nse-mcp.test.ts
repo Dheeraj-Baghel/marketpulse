@@ -297,6 +297,20 @@ describe("price service: provider priority and fallback", () => {
     assert.equal(r.count, 2);
   });
 
+  test("provider outage without a CSV fallback is a retryable API failure, not a cached empty success", async () => {
+    await assert.rejects(m.prices.getPrices({ symbol: "TESTCO", series: "EQ", range: "3M" },
+      deps({ get_stock_history: () => new m.client.McpProviderError("UNAVAILABLE", "upstream error", "bhavcopy", true) })),
+      (error: { code?: string; status?: number }) => error.code === "PROVIDER_UNAVAILABLE" && error.status === 502);
+  });
+
+  test("partial validated candles and extension warning propagate through the price service", async () => {
+    const result = await m.prices.getPrices({ symbol: "TESTCO", series: "EQ", range: "MAX" },
+      deps({ get_stock_history: (_args, count) => count === 1 ? historyPayload([row("2026-10-21", 100)], "2026-07-20")
+        : new m.client.McpProviderError("UNAVAILABLE", "older chunk failed", "bhavcopy", true) }));
+    assert.equal(result.sourceId, "nse-bhavcopy-mcp"); assert.equal(result.count, 1);
+    assert.equal(result.provider?.complete, false); assert.equal(result.provider?.loadWarning?.code, "UNAVAILABLE");
+  });
+
   test("no MCP data and no CSV -> explicit unavailable; disabled -> CSV without contacting NSE", async () => {
     const none = await m.prices.getPrices({ symbol: "TESTCO", series: "EQ", range: "1Y" }, deps({ get_stock_history: () => new m.client.McpProviderError("TOOL_ERROR", "Symbol not found: TESTCO", "bhavcopy", false) }));
     assert.equal(none.sourceId, "unavailable");

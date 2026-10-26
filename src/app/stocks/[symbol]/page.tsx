@@ -74,7 +74,9 @@ export default async function StockPage(props: PageProps<"/stocks/[symbol]">) {
   let initialData: ValidatedSeries | null = null;
   if (chartListing) {
     const seed = getPrices(
-      { symbol: chartListing.symbol, series: chartListing.series, range: "MAX" },
+      // Seed recent data only; the client extends the requested range without
+      // blocking first render on the entire five-year upstream traversal.
+      { symbol: chartListing.symbol, series: chartListing.series, range: "3M" },
       { provider, mcpHistory: md.config.mcpEnabled ? md.history : null, mcpEnabled: md.config.mcpEnabled },
     )
       .then((body) => validatePriceResponse(body, { symbol: chartListing.symbol, series: chartListing.series }))

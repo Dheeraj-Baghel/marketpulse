@@ -64,7 +64,7 @@ export function StockPriceChart(props: StockPriceChartProps) {
   const security = useMemo(() => ({ symbol, series }), [symbol, series]);
   const key = securityKey(security);
   const initial = useMemo(() => (initialData ? { key, data: initialData } : null), [initialData, key]);
-  const { view, retry, refresh: refreshHistory, isRefreshing, refreshError } = usePriceHistory(security, initial);
+  const { view, retry, refresh: refreshHistory, isRefreshing, refreshError } = usePriceHistory(security, initial, range);
   // Separate request + loading state: a slow quote never blocks the chart, and vice versa.
   const { view: quoteView, refresh: refreshQuote } = useQuote(security, { enabled: quotes?.enabled ?? false, autoRefreshMs: quotes?.autoRefreshMs ?? 0 });
 
@@ -189,6 +189,13 @@ export function StockPriceChart(props: StockPriceChartProps) {
         </div>
       </div>
 
+      {isRefreshing && view.status === "ready" ? <p role="status" data-testid="history-extending" className="px-4 pb-2 text-xs text-fg-muted sm:px-5">Recent candles are visible. Loading the rest of the selected range…</p> : null}
+      {!isRefreshing && view.status === "ready" && (refreshError || view.data.meta.provider?.loadWarning) ? (
+        <div role="status" data-testid="history-partial-warning" className="mx-4 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-bg p-3 text-xs text-fg sm:mx-5">
+          <p className="min-w-0 flex-1">{refreshError?.message ?? view.data.meta.provider?.loadWarning?.message} Existing candles are kept; the visible date range is shown below.</p>
+          <button className="min-h-9 rounded-md border border-line px-3 font-medium focus-visible:outline-2" type="button" onClick={retry}>Retry loading older data</button>
+        </div>
+      ) : null}
       <OhlcReadout readout={readout} hovering={Boolean(hovered)} hasVolume={hasVolume} status={view.status} />
 
       <div className={cn("relative mx-4 mb-3 min-h-[18rem] flex-1 overflow-hidden rounded-md border border-line sm:mx-5", variant === "full" && "min-h-[26rem]", fullscreen && "min-h-0")}>

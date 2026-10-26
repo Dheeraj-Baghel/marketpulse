@@ -46,7 +46,7 @@ export type HistoryFailure =
   | { kind: "provider"; error: McpProviderError };
 
 export type HistoryResult =
-  | { ok: true; history: McpHistory; cached: boolean; chunksThisCall: number }
+  | { ok: true; history: McpHistory; cached: boolean; chunksThisCall: number; warning?: { code: string; message: string; retryable: boolean } }
   | { ok: false; failure: HistoryFailure };
 
 class SeriesMismatch extends Error {
@@ -105,8 +105,29 @@ export class NseBhavcopyHistoryProvider {
     let foreignRows = base?.foreignSeriesRows ?? 0;
     const foreignSeries = new Set(base?.foreignSeries ?? []);
     let chunks = 0;
+    const started = Date.now();
+    let warning: { code: string; message: string; retryable: boolean } | undefined;
+    // Preserve each verified chunk before requesting older data. One upstream
+    // failure must not discard recent candles or force the user to start over.
+    const remember = (): McpHistory => {
+      const history: McpHistory = {
+        symbol: security.symbol, series: security.series, candles,
+        nextEndDate: next, fetchedAt: base?.fetchedAt ?? now.toISOString(),
+        chunksFetched: (base?.chunksFetched ?? 0) + chunks,
+        rejectedRows: rejected, foreignSeriesRows: foreignRows, foreignSeries: [...foreignSeries].sort(),
+      };
+      const age = this.now().getTime() - Date.parse(history.fetchedAt);
+      this.cache.set(key, history, Math.max(1000, this.opts.ttlMs - age));
+      return history;
+    };
     try {
       while (next !== null && chunks < MAX_CHUNKS_PER_LOAD) {
+        // Bound cold serverless history extension; render verified partial data
+        // instead of holding the whole chart hostage to 20+ upstream requests.
+        if (chunks > 0 && Date.now() - started >= 15_000) {
+          warning = { code: "HISTORY_PARTIAL", message: "Recent candles are available. Older history is not fully loaded yet; retry loading older data to continue.", retryable: true };
+          break;
+        }
         let payload: unknown;
         try {
           this.calls++;
@@ -146,6 +167,7 @@ export class NseBhavcopyHistoryProvider {
         const nextEnd = parsed.data.next_end_date ?? null;
         // Guard against a cursor that does not move backwards (would loop).
         next = nextEnd && (candles[0] ? nextEnd < candles[0].date : true) ? nextEnd : null;
+        if (candles.length) remember();
         if (fromDate !== null && (candles[0]?.date ?? "9999-12-31") <= fromDate) break;
       }
     } catch (error) {
@@ -162,25 +184,15 @@ export class NseBhavcopyHistoryProvider {
       if (error instanceof McpProviderError && error.code === "TOOL_ERROR" && /not found/i.test(error.message)) {
         return { ok: false, failure: { kind: "not-found", message: `NSE Bhavcopy has no history for ${security.symbol}.` } };
       }
-      if (error instanceof McpProviderError) return { ok: false, failure: { kind: "provider", error } };
+      if (error instanceof McpProviderError) {
+        if (candles.length) return { ok: true, history: remember(), cached: chunks === 0, chunksThisCall: chunks,
+          warning: { code: error.code, message: `Showing verified recent candles. Older history could not finish loading: ${error.message}`, retryable: error.retryable } };
+        return { ok: false, failure: { kind: "provider", error } };
+      }
       throw error;
     }
 
     if (candles.length === 0) return { ok: false, failure: { kind: "not-found", message: `NSE Bhavcopy returned no sessions for ${security.symbol} ${security.series}.` } };
-    const history: McpHistory = {
-      symbol: security.symbol,
-      series: security.series,
-      candles,
-      nextEndDate: next,
-      fetchedAt: base?.fetchedAt ?? now.toISOString(),
-      chunksFetched: (base?.chunksFetched ?? 0) + chunks,
-      rejectedRows: rejected,
-      foreignSeriesRows: foreignRows,
-      foreignSeries: [...foreignSeries].sort(),
-    };
-    // Extending an entry backwards keeps its original freshness clock.
-    const age = now.getTime() - Date.parse(history.fetchedAt);
-    this.cache.set(key, history, Math.max(1000, this.opts.ttlMs - age));
-    return { ok: true, history, cached: false, chunksThisCall: chunks };
+    return { ok: true, history: remember(), cached: false, chunksThisCall: chunks, ...(warning ? { warning } : {}) };
   }
 }
