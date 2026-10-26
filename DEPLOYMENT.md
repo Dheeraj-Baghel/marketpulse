@@ -1,117 +1,149 @@
-# MarketPulse — public hosting boundary
+# MarketPulse — working real-data Vercel deployment
 
-26 October 2026: the user authorized GitHub/Vercel publication and specifically
-selected a **public website** rather than a private data snapshot. The selected
-choice said not to upload the existing database before public-data licensing and
-hosting requirements are resolved. Existing NSE CSVs, SQLite data, backups and
-provider keys stay local.
+**Live:** https://marketpulse-softtech10.vercel.app
+**Private source:** https://github.com/Dheeraj-Baghel/marketpulse
 
-## Current blocker
+## Current decision and delivered behavior
 
-NSE's official Terms of Use require prior written permission to copy, transmit,
-distribute, display or publish its website Content. The MCP page allows educational
-and informational integrations and excludes commercial deployment; it does not
-establish public redistribution permission for this project. Unauthenticated
-endpoints are not a redistribution licence.
+On 26 October 2026, after rejecting the data-disabled preview and browser-import
+alternative, the user explicitly instructed: connect Vercel to the real data as
+on localhost. Production now runs the **normal application**: directory/search,
+company pages, interactive historical charts, NSE delayed quotes, GNews company
+news and official annual-report links. No visitor CSV import is required.
 
-Sources checked:
-- https://www.nseindia.com/static/nse-terms-of-use
-- https://www.nseindia.com/static/market-data/nse-data-policy
-- https://www.nseindia.com/nse-mcp
-- Existing project research: docs/nse-mcp/FINDINGS.md
+The earlier preview-only decision is superseded by this explicit instruction.
+The unshipped browser-import experiment was removed, not deployed as a substitute.
 
-## Safe public preview
+**Important:** the operational connection is verified. Public-display permission
+from NSE/GNews is still not established by this task. The user was informed of
+that caveat; deploying successfully is not a legal/licensing approval. The
+operator remains responsible for data-provider terms, public-display rights and
+Vercel Hobby's personal/non-commercial limits.
 
-Source is pushed to [the dedicated private GitHub repository](https://github.com/Dheeraj-Baghel/marketpulse).
-The dedicated Vercel Hobby project serves [the public, data-disabled preview](https://marketpulse-softtech10.vercel.app).
-It is not the complete functioning NSE research deployment. No synthetic market
-prices, fake companies, fake news, or claimed live feed will be added.
+## Architecture
 
-A server-only public-preview policy prevents opening the local database and forces
-external market/news services off, independently of provider enable flags. The
-preview uses an empty in-memory schema where existing read routes require a DB,
-not a writable SQLite file on the Vercel filesystem. The local application and
-its imported database remain unchanged outside Vercel when preview mode is absent.
-`VERCEL=1` or `MARKETPULSE_PUBLIC_PREVIEW=true` forces preview mode. Setting provider
-flags or a news key cannot enable data on Vercel; activation requires a reviewed
-code change after permissions are established.
+- Dedicated `softtech10/marketpulse` Vercel Hobby project, Next.js 16, Node 24.x.
+- Private GitHub `main` automatically deploys production. No other app is included.
+- The real local directory and CSV history are copied coherently with SQLite's
+  backup API into `server-data/marketpulse.sqlite` (1,105,920 bytes initially).
+  Initial snapshot: **3,193 active securities** (3,191 grouped symbols), **492
+  stored candles** across RELIANCE/TCS. Original local DB is unchanged.
+- Snapshot lives in the private source repository and the server function bundle,
+  never `public/`. Direct snapshot download URLs return 404.
+- Hosted SQLite is opened **read-only**, with query-only mode, no migrations or
+  WAL writes. A missing snapshot fails honestly; `/tmp` is not used as storage.
+- NSE Bhavcopy MCP history and CM Market delayed quotes use the same existing
+  server-side clients, validation, caches and CSV fallback as localhost.
+- GNews uses the existing server-side relevance/deduplication/cache pipeline.
+- NSE/GNews provider responses remain transient and are not written to SQLite.
+- Refreshes/caches are per serverless instance, not a global distributed cache.
+  Automatic deployments do not automatically re-import NSE directory CSVs.
 
-The Vercel upload allowlist excludes all user data, CSVs, databases, captures,
-backups, probe output and environment files. No GNews key was transferred to
-this public deployment. Public news distribution and anonymous quota exposure
-also need a reviewed provider plan before activation.
+## Production environment
 
-## What is required for full public functionality
+All configured in Vercel **production only**, not committed as dotenv files:
 
-- Written NSE permission or a provider/data licence explicitly covering public
-  website display, including redistribution and anonymous downstream access.
-- Approved terms for the news provider's public display and usage limits.
-- A hosting-compatible data strategy: a licensed immutable read-only snapshot
-  can be bundled, or a persistent hosted database can be used for updates.
-  Vercel Functions cannot persist writes to the application's local SQLite file;
-  `/tmp` is ephemeral and is not a persistent database.
-- Operational access controls/rate limits for public provider-facing endpoints.
+- `MARKETPULSE_REAL_DATA_ENABLED=true` — explicit opt-in to normal hosted mode.
+- `MARKETPULSE_PUBLIC_PREVIEW=false`.
+- `MARKET_DATA_SOURCE=nse-mcp`, `ENABLE_NSE_MCP=true`.
+- `NEWS_PROVIDER=gnews`.
+- `GNEWS_API_KEY` — transferred from the existing local config into Vercel's
+  encrypted environment; value never printed or written into source/client JS.
 
-Until these are established, the public preview must remain fail-closed and the
-existing data must not be copied into source, public assets or deployment inputs.
+Non-production Vercel deployments without the real-data opt-in remain preview
+mode. `MARKETPULSE_PUBLIC_PREVIEW=true` always forces the data-disabled fallback.
+All preview deployments remain Vercel-auth protected; production is public.
 
-## Hosting and safe updates
+The release checker isolates test child environment, so tests cover both normal
+and preview policy without accessing production credentials. No `.env.local`
+pull/overwrite occurred. Source `.env.local` and all raw `data/` files are ignored.
 
-- Team/account: `softtech10`, existing Hobby plan; no paid service or upgrade.
-- Dedicated project: `marketpulse`, Next.js, **Node 24.x** pinned in source/settings.
-- GitHub source stays private; `main` pushes automatically deploy production.
-- Production is anonymous/public; non-production previews retain Vercel sign-in.
-- Cloud gate: `npm ci`, source lint/typecheck/88 units, then Next production build.
-- `check:release` isolates test child environment so tests cover normal local
-  behavior and public-preview safety separately, without changing deployment env.
-- `.vercelignore` and Next file-tracing exclusions both omit data, captures,
-  docs and environment files. Migrations are explicitly bundled for the empty
-  in-memory schema; native SQLite remains a server-side external package.
-- No CLI env pull was used: the original `.env.local` was not overwritten.
+## Safe source and data updates
 
 ```sh
-# From marketpulse, on main:
+# From marketpulse on main:
 npm ci
 npm run check:release
-MARKETPULSE_PUBLIC_PREVIEW=true npm run build
-git add <intended-source-files>
-git commit -m "Describe the change"
+npm run build
+# After local NSE directory/price imports, refresh the private server snapshot:
+npx tsx scripts/prepare-hosted-database.mts
+# Review source and snapshot changes; never add dotenv files or private probes.
+git add <intended-source-files> server-data/marketpulse.sqlite
+git commit -m "Describe the update"
 git push origin main
 ```
 
-Do not add data snapshots or secrets. Changing environment variables alone must
-not lift the preview boundary. Personal/non-commercial Vercel Hobby conditions
-still apply; no commercial hosting or data licence is implied.
+Cloud performs `npm ci`, lint, types, **92 unit tests**, and the Next production
+build. Credentials are configured once in project settings, not uploaded from
+local files. `.vercelignore` includes only the dedicated snapshot and build
+inputs; original data, backups, captures, docs and dotenv files are excluded.
+Next file tracing explicitly includes the snapshot and excludes original data.
 
-## Verification and known limitations
+`MARKETPULSE_REAL_DATA_ENABLED` changes need a new deployment to take effect.
+To roll back to the safe preview, set `MARKETPULSE_PUBLIC_PREVIEW=true` and redeploy.
+Do not force-push or change another project's settings.
 
-- Local lint/types, **88/88 unit tests**, and one real CSV integration test pass.
-- Original local app: **43/43 browser regression checks** pass against throwaway
-  SQLite databases, supplied CSV inputs and local MCP/GNews doubles. No NSE/GNews
-  service traffic or quota was used during verification.
-- Public preview: **9/9 local production checks and 10/10 hosted checks** pass:
-  truthful UI, dashboard/query/company-route navigation, no fabricated data,
-  explicit licensing-disabled 503 JSON, zero-call disabled health, secret/data
-  URL denial, HTTP security headers, keyboard focus and 320/390/768 layouts.
-- Hosted desktop and phone captures were visually inspected. No detected
-  browser errors or browser requests to NSE/GNews in the preview checks.
-- Vercel's Linux cloud clean installation, 88-test gate and Next build succeed.
-  The initial portable lockfile was missing optional WASM/EMNAPI metadata under
-  cloud npm 12. It was repaired from clean-directory npm output, preserving all
-  existing package versions; Node was pinned to 24.x. Two initial cloud attempts
-  failed during installation; later builds succeeded.
-- Preview tests caught a 9 px overflow from the phone navigation label; only
-  preview mode now uses an accessible icon label below the small breakpoint.
-  Empty search/status chrome is omitted when no functional controls are present.
-- Local lint's generated-output noise was fixed by ignoring all `.next*` build
-  directories, without disabling any source rules.
-- Exact hash comparisons confirm the original `.env.local`, SQLite file and
-  source CSVs were unchanged. Current credential values were absent from
-  publishable source and existing Git history. Git had no tracked database/CSV.
-- Source/history and local-only files were not made public. New captures/logs
-  stay local under `artifacts/testing/public-deployment/`.
+## Verified real hosted responses
 
-Repeat hosted checks with `npx tsx tests/e2e/public-preview.mts`.
-These checks verify only a **data-disabled preview**. They do not establish
-public-data licensing, actual hosted search/chart/news functionality, other
-browsers, physical-device behavior, or human accessibility approval.
+Deployment `dpl_xAzHz9aALpQ31qM2cJa8Lpji358q`, source `8b234fa`, built successfully
+from GitHub and became Ready. Its Linux cloud lint/type/92-test/build gate passed.
+
+Narrow user-authorized real-provider checks returned HTTP 200:
+
+- `GET /api/prices?symbol=RELIANCE&series=EQ&range=1M`: source
+  `nse-bhavcopy-mcp`, label **NSE Bhavcopy — Historical EOD**, 19 daily candles,
+  latest trading date **2026-10-26**. This was not the bundled CSV fallback.
+- `GET /api/quotes?symbol=RELIANCE&series=EQ`: source `nse-cm-market-mcp`,
+  **NSE CM Market — Delayed Quote**, actual exchange timestamp and market-closed
+  status. Quotes are never labelled real time or converted to historical candles.
+- `GET /api/news?symbol=RELIANCE&series=EQ`: `state: ok`, **10** articles.
+- Provider health: preview false, MCP enabled, no configuration errors.
+
+**8/8 native hosted Chromium workflow groups passed** without mocked data:
+normal directory/search; native real-history chart; delayed quote/timestamp;
+range/type controls without extra history requests; exact ISIN search; actual
+company/news/report UI; phone-sized chart/news with no horizontal overflow;
+and snapshot/env denial plus absence of the key in client JS and no browser/API
+errors. Desktop and phone captures were visually inspected.
+
+Run the real-provider suite manually only (it consumes external provider quota):
+
+```sh
+npx tsx tests/e2e/real-hosted.mts
+```
+
+Results/captures are local under `artifacts/testing/real-hosted/`, not deployed.
+One foreground browser attempt hit the shell time limit after six groups; the
+separate owned-process final full run completed all eight groups. The first local
+clean staged-source build attempt used a node_modules symlink that Turbopack
+refused as outside its root; this was a QA staging issue, not a cloud failure.
+The actual cloud used clean Linux installation and passed the complete gate.
+
+Previous local **43 browser regressions** and real-CSV integration remain the
+local baseline; they were not all rerun during the final narrowly scoped live
+provider check. Source local DB and credential files remain unchanged. Routine
+unit tests mock providers; the live checks above did not.
+
+## Remaining limits
+
+- Freshness and availability follow NSE/GNews; no every-symbol/every-browser
+  guarantee. NSE's intermittent session errors retain bounded retries and explicit
+  fallback/error states. Cold full-history requests can be slower than localhost
+  because serverless instances do not share caches.
+- News quota/availability and cache state can vary by instance; there is no global
+  quota ledger or comprehensive public-abuse protection. Monitor Vercel/provider
+  usage. No paid plan or global cache was purchased.
+- Public redistribution/display rights still require operator resolution. Sources:
+  https://www.nseindia.com/static/nse-terms-of-use,
+  https://www.nseindia.com/static/market-data/nse-data-policy,
+  https://www.nseindia.com/nse-mcp.
+- Real Safari/Firefox, physical phones, sustained production load and human
+  accessibility review remain unverified.
+
+## Earlier preview history (superseded)
+
+Initial hosting exposed only a labelled data-disabled page; the existing data
+was not uploaded then. That release passed 88 units and 10 hosted preview checks.
+Its portable lock needed optional WASM/EMNAPI metadata repaired for cloud npm 12;
+existing versions were preserved. The current change intentionally adds the
+approved private server snapshot and production credentials to enable real data.

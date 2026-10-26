@@ -2,28 +2,30 @@
 
 A personal NSE stock research workspace.
 
-## GitHub and public preview — 26 October 2026
+## Working real-data website — 26 October 2026
 
-The user selected a public website, not upload of the existing local NSE database.
-The source is in [a dedicated private GitHub repository](https://github.com/Dheeraj-Baghel/marketpulse),
-and [the data-disabled public Vercel preview](https://marketpulse-softtech10.vercel.app)
-is live. `main` pushes automatically deploy; Node 24 and a cloud lint/type/test/build
-gate are configured. This is not a full functioning public research
-service: NSE public-display permission and a hosting-compatible licensed data
-strategy are not established. Existing database/CSV files, backups and provider
-keys remain local. No fake market data is added.
+**[Open MarketPulse](https://marketpulse-softtech10.vercel.app)** — now connected
+to the same real NSE/GNews provider paths as localhost, as explicitly requested
+by the user. The disabled preview and unshipped browser-import alternative are
+not used in production. No visitor import is required.
 
-The local app retains its directory, charts and news features. Vercel/public-preview
-mode is fail-closed: no local DB is opened, market/news APIs return an explicit
-licensing-unavailable response, and the page clearly explains the limitation.
-See [deployment boundaries and requirements](DEPLOYMENT.md).
+[Private GitHub source](https://github.com/Dheeraj-Baghel/marketpulse) automatically
+deploys `main` to the dedicated Vercel Hobby project. The real directory/CSV
+history is a read-only server snapshot: **3,193 active securities, 492 stored
+candles**. Existing NSE MCP history/quotes and GNews fetch automatically server-side;
+the encrypted news key never ships to the browser. Source local DB and dotenv
+files remain unchanged. Snapshot files have no public download route.
 
-Local/cloud 88-unit gates pass. The original local application passes one real-CSV
-integration test and all 43 browser regression checks. The data-disabled preview
-passes 9 local production and 10 hosted checks, including zero-call provider health,
-API/data-file protection, navigation and 320/390/768 layouts. Source data and
-credentials are hash-verified unchanged. Physical devices/other browsers remain
-manual; no hosted market-data functionality or licensing approval is claimed.
+Verified real hosted HTTP 200 responses: **19 RELIANCE history candles through
+26 October 2026** from NSE Bhavcopy (not CSV fallback), an actual NSE delayed quote
+with exchange timestamp, and **10 GNews company articles**. Native desktop/phone
+UI checks exercise search, charts/ranges, quote, company news and report links.
+**92 unit tests and 8 hosted workflow groups pass**; the cloud clean build passes.
+
+Public-display permission remains unconfirmed; technical connectivity is not
+licensing approval. Cold full-history requests and free-provider quotas can vary.
+Physical devices, other browsers and sustained public load remain unverified.
+See [hosting, snapshot refresh, verification and limits](DEPLOYMENT.md).
 
 ## Chart day ranges — 1D / 2D / 7D
 
